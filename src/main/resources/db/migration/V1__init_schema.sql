@@ -1,4 +1,3 @@
-
 -- V1: Initial schema
 -- Add your initial DDL here as domain entities are created.
 -- Example:
