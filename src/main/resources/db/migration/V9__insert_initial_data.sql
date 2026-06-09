@@ -13,7 +13,7 @@ VALUES (
            'Admin',
            'System',
            'admin@covenantcode.ru',
-           '$2a$10$fo1QXaLNusWym4oXjkmgLuuXqvph5SB7AHmNoPPEwB4xnIycY65w6',
+           '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
            (SELECT id FROM roles WHERE name = 'ADMIN'),
            TRUE
        );
