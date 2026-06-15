@@ -8,4 +8,6 @@ public interface UserService {
     Page<UserResponse> getAll(Pageable pageable);
 
     UserResponse getUserById(Long id, Long currentUserId);
+
+    UserResponse updateEnabled(Long id, boolean enabled, Long currentUserId);
 }
