@@ -4,6 +4,7 @@ import com.covenantcode.crm.dto.user.UserResponse;
 import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.RoleName;
+import com.covenantcode.crm.exception.BadRequestException;
 import com.covenantcode.crm.exception.ForbiddenException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.UserMapper;
@@ -23,6 +24,8 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -247,5 +250,75 @@ public class UserServiceImplTest {
         user.setRole(role);
         user.setEnabled(true);
         return user;
+    }
+
+    @Test
+    public void updateEnabled_whenAdminBlocksAnotherUser(){
+        Long adminId = 1L;
+        Long targetUserId = 2L;
+        boolean enabledStatus = false;
+
+        User targetUser = new User();
+        targetUser.setId(targetUserId);
+        targetUser.setEnabled(true);
+
+        when(userRepository.findById(targetUserId)).thenReturn(Optional.of(targetUser));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User userToSave = invocation.getArgument(0);
+            userToSave.setEnabled(enabledStatus);
+            return userToSave;
+        });
+        assertThatCode(() -> userService.updateEnabled(targetUserId, enabledStatus, adminId))
+                .doesNotThrowAnyException();
+        verify(userRepository, times(1)).save(any(User.class));
+    }
+
+    @Test
+    public void updateEnabled_whenUserBlocksHimself(){
+        Long adminId = 1L;
+        boolean enabledStatus = false;
+
+        assertThatThrownBy(() -> userService.updateEnabled(adminId, enabledStatus, adminId))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Нельзя заблокировать собственный аккаунт");
+        verify(userRepository, never()).findById(any());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    public void updateEnabled_whenUserNotFound(){
+        Long nonExistentUserId = 999L;
+        boolean enabledStatus = false;
+        Long currentUserId = 1L;
+
+        when(userRepository.findById(nonExistentUserId)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> userService.updateEnabled(nonExistentUserId, enabledStatus, currentUserId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Пользователь не найден");
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    public void updateEnabled_whenUserAlreadyActive(){
+        Long adminId = 1L;
+        Long targetUserId = 2L;
+        boolean enabledStatus = true;
+
+        User targetUser = new User();
+        targetUser.setId(targetUserId);
+        targetUser.setEnabled(true);
+
+        when(userRepository.findById(targetUserId)).thenReturn(Optional.of(targetUser));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User userToSave = invocation.getArgument(0);
+            userToSave.setEnabled(enabledStatus);
+            return userToSave;
+        });
+        assertThatCode(() -> userService.updateEnabled(targetUserId, enabledStatus, adminId))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> userService.updateEnabled(targetUserId, enabledStatus, adminId))
+                .doesNotThrowAnyException();
+
+        verify(userRepository, times(2)).save(any(User.class));
     }
 }
