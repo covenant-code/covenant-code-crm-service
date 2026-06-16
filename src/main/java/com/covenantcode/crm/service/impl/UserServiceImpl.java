@@ -3,6 +3,7 @@ package com.covenantcode.crm.service.impl;
 import com.covenantcode.crm.dto.user.UserResponse;
 import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.RoleName;
+import com.covenantcode.crm.exception.BadRequestException;
 import com.covenantcode.crm.exception.ForbiddenException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.UserMapper;
@@ -45,5 +46,17 @@ public class UserServiceImpl implements UserService {
         }
 
         return userMapper.toResponse(targetUser);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse updateEnabled(Long id, boolean enabled, Long currentUserId) {
+        if (id.equals(currentUserId)) {
+            throw new BadRequestException("Нельзя заблокировать собственный аккаунт");
+        }
+        User user = userRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Пользователь не найден"));
+        user.setEnabled(enabled);
+        User savedUser = userRepository.save(user);
+        return userMapper.toResponse(savedUser);
     }
 }
