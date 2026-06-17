@@ -2,6 +2,7 @@ package com.covenantcode.crm.controller;
 
 
 import com.covenantcode.crm.dto.auth.AuthResponse;
+import com.covenantcode.crm.dto.auth.LoginRequest;
 import com.covenantcode.crm.dto.auth.RegisterRequest;
 import com.covenantcode.crm.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,5 +30,24 @@ public class AuthController {
     })
     public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
         return authService.register(request);
+    }
+
+    //Аутентификация пользователя
+    @PostMapping("/login")
+    @Operation(summary = "Аутентификация пользователя")
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Аутентификация успешна"
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Ошибка валидации"),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Неверный логин или пароль")
+    })
+    public AuthResponse login(@Valid @RequestBody LoginRequest request){
+        return  authService.login(request);
     }
 }
