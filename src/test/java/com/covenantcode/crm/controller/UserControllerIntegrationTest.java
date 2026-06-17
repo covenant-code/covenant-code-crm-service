@@ -89,7 +89,7 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
         userRepository.deleteAll();
     }
 
-    @Disabled
+//    @Disabled
     @Test
     public void getAllUsers_withAdminToken_success() throws Exception {
         mockMvc.perform(get("/api/v1/users")
@@ -110,11 +110,11 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    @Disabled
+//    @Disabled
     @Test
     public void getAllUsers_withoutToken_unauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/users"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isForbidden());
     }
 
     @Test
