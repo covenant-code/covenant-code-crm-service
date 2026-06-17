@@ -1,6 +1,7 @@
 package com.covenantcode.crm.controller;
 
 import com.covenantcode.crm.BaseIntegrationTest;
+import com.covenantcode.crm.dto.auth.LoginRequest;
 import com.covenantcode.crm.dto.auth.RegisterRequest;
 import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.User;
@@ -8,6 +9,7 @@ import com.covenantcode.crm.entity.enums.RoleName;
 import com.covenantcode.crm.repository.RoleRepository;
 import com.covenantcode.crm.repository.UserRepository;
 
+import com.covenantcode.crm.security.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,14 +17,24 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.hamcrest.Matchers.hasItems;
+import static org.hibernate.validator.internal.util.Contracts.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+
 
 public class AuthControllerIntegrationTest extends BaseIntegrationTest {
-    
+    private static final String REGISTER_URL = "/api/v1/auth/register";
+    private static final String LOGIN_URL = "/api/v1/auth/login";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -38,13 +50,32 @@ public class AuthControllerIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private JwtService jwtService;
+
+    private Role testRole;
+    private User testUser;
+
     @BeforeEach
     void setUp() {
-        if (roleRepository.findByName(RoleName.MANAGER).isEmpty()) {
-            Role role = new Role();
-            role.setName(RoleName.MANAGER);
-            roleRepository.save(role);
-        }
+        // Создаем роль MANAGER (если её нет)
+        testRole = roleRepository.findByName(RoleName.MANAGER)
+                .orElseGet(() -> {
+                    Role role = new Role();
+                    role.setName(RoleName.MANAGER);
+                    return roleRepository.save(role);
+                });
+
+        // Создаем тестового пользователя для тестов логина
+        testUser = User.builder()
+                .firstName("Тест")
+                .lastName("Пользователь")
+                .email("login_test@example.com")
+                .password(passwordEncoder.encode("test_password_123"))
+                .role(testRole)
+                .enabled(true)
+                .build();
+        testUser = userRepository.save(testUser);
     }
 
     @AfterEach
@@ -123,4 +154,84 @@ public class AuthControllerIntegrationTest extends BaseIntegrationTest {
                 )));
     }
 
+    // ===== Тесты ЛОГИНА (переписанные) =====
+    @Test
+    @DisplayName("Успешный вход с корректными учетными данными")
+    void testControllerIntegrationLoginSuccess() throws Exception {
+        LoginRequest request = new LoginRequest(
+                testUser.getEmail(),
+                "test_password_123"
+        );
+
+        mockMvc.perform(post(LOGIN_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").isNotEmpty())
+                .andExpect(jsonPath("$.role").value("MANAGER"));
+    }
+
+    @Test
+    @DisplayName("Ошибка логина: неверный пароль")
+    void testControllerIntegrationLoginWrongPassword() throws Exception {
+        LoginRequest request = new LoginRequest(
+                testUser.getEmail(),
+                "wrong_password"
+        );
+
+        mockMvc.perform(post(LOGIN_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.detail").value("Неверный email или пароль"));
+    }
+
+    @Test
+    @DisplayName("Ошибка логина: неверный email")
+    void testControllerIntegrationLoginWrongEmail() throws Exception {
+        LoginRequest request = new LoginRequest(
+                "wrong@example.com",
+                "test_password_123"
+        );
+
+        mockMvc.perform(post(LOGIN_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.detail").value("Неверный email или пароль"));
+    }
+
+    @Test
+    @DisplayName("Ошибка логина: пустое поле email")
+    void testControllerIntegrationLoginEmptyEmail() throws Exception {
+        LoginRequest request = new LoginRequest(
+                "",
+                "test_password_123"
+        );
+
+        mockMvc.perform(post(LOGIN_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.type").value("validation-error"))
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    @DisplayName("Ошибка логина: пустое поле пароля")
+    void testControllerIntegrationLoginEemptyPassword() throws Exception {
+        LoginRequest request = new LoginRequest(
+                testUser.getEmail(),
+                ""
+        );
+
+        mockMvc.perform(post(LOGIN_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.type").value("validation-error"))
+                .andExpect(jsonPath("$.status").value(400));
+    }
 }
