@@ -1,5 +1,6 @@
 package com.covenantcode.crm.mapper;
 
+import com.covenantcode.crm.dto.lead.UserShortResponse;
 import com.covenantcode.crm.dto.user.UserResponse;
 import com.covenantcode.crm.entity.User;
 import org.mapstruct.Mapper;
@@ -13,6 +14,17 @@ public interface UserMapper {
 
     @Mapping(target = "role", expression = "java(user.getRole().getName().name())")
     UserResponse toResponse(User user);
+
+    default UserShortResponse toShortResponse(User user) {
+        if (user == null) {
+            return null;
+        }
+        return UserShortResponse.builder()
+                .id(user.getId())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .build();
+    }
 
     default String map(OffsetDateTime value) {
         if (value == null) {
