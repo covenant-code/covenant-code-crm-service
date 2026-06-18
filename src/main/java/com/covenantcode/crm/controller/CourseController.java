@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -35,5 +36,16 @@ public class CourseController {
     })
     public CourseResponse create(@Valid @RequestBody CourseCreateRequest request) {
         return courseService.create(request);
+    }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Получить курс по ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Курс найден"),
+            @ApiResponse(responseCode = "401", description = "Не авторизован"),
+            @ApiResponse(responseCode = "404", description = "Курс не найден")
+    })
+    public ResponseEntity<CourseResponse> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(courseService.getById(id));
     }
 }
