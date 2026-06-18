@@ -14,7 +14,9 @@ import com.covenantcode.crm.repository.RoleRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
+import com.covenantcode.crm.repository.CourseRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -29,9 +31,9 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @AutoConfigureMockMvc(addFilters = false)
 public class CourseControllerIntegrationTest extends BaseIntegrationTest {
@@ -262,5 +264,42 @@ public class CourseControllerIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(delete("/api/v1/courses/{id}", savedCourse.getId())
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());
+    }
+}
+    @WithMockUser(roles = "MANAGER")
+    void getById_WhenCourseExists_ShouldReturnOk() throws Exception {
+
+        Course course = new Course();
+        course.setTitle("Spring Boot Master");
+        course.setDescription("Advanced course");
+        course.setPrice(BigDecimal.valueOf(100.0));
+        course.setDurationInWeeks(8);
+        course.setStatus(CourseStatus.ACTIVE);
+
+        Course savedCourse = courseRepository.save(course);
+
+        mockMvc.perform(get("/api/v1/courses/{id}", savedCourse.getId()))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.id").value(savedCourse.getId()))
+                .andExpect(jsonPath("$.title").value("Spring Boot Master"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @Test
+    @WithMockUser(roles = "MANAGER")
+    void getById_WhenCourseDoesNotExist_ShouldReturnNotFound() throws Exception {
+
+        mockMvc.perform(get("/api/v1/courses/99999"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.type").value("resource-not-found"))
+                .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Disabled
+    @Test
+    void getById_WhenUnauthorized_ShouldReturnUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/courses/1"))
+                .andExpect(status().isUnauthorized());
     }
 }

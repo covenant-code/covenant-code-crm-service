@@ -29,26 +29,26 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
 
     private static final String[] PUBLIC_ENDPOINTS = {
-        "/api/v1/auth/**",
-        "/api/v1/test/**",   // temporary: deployment verification
-        "/swagger-ui/**",
-        "/swagger-ui.html",
-        "/api-docs/**",
-        "/actuator/health"
+            "/api/v1/auth/**",
+            "/api/v1/test/**",   // temporary: deployment verification
+            "/swagger-ui/**",
+            "/swagger-ui.html",
+            "/api-docs/**",
+            "/actuator/health"
     };
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
-            .csrf(AbstractHttpConfigurer::disable)
-            .sessionManagement(session ->
-                session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
-                .anyRequest().authenticated())
-            .authenticationProvider(authenticationProvider())
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-            .build();
+                .csrf(AbstractHttpConfigurer::disable)
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
+                        .anyRequest().authenticated())
+                .authenticationProvider(authenticationProvider())
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .build();
     }
 
     @Bean

@@ -46,6 +46,7 @@ public class CourseServiceImplTest {
     private Course savedCourse;
     private CourseResponse response;
     private Course existingCourse;
+    private CourseResponse courseResponse;
 
     @BeforeEach
     void setUp() {
@@ -57,12 +58,13 @@ public class CourseServiceImplTest {
         request.setStatus(CourseStatus.ACTIVE);
 
         course = new Course();
+        course.setId(1L);
+        course.setTitle("Java Developer");
         course.setTitle(request.getTitle());
         course.setDescription(request.getDescription());
         course.setDurationInWeeks(request.getDurationInWeeks());
         course.setPrice(request.getPrice());
         course.setStatus(CourseStatus.ACTIVE);
-
         savedCourse = new Course();
         savedCourse.setId(1L);
         savedCourse.setTitle(request.getTitle());
@@ -75,6 +77,7 @@ public class CourseServiceImplTest {
 
         response = CourseResponse.builder()
                 .id(1L)
+                .title("Java Developer")
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .durationInWeeks(request.getDurationInWeeks())
@@ -100,9 +103,7 @@ public class CourseServiceImplTest {
         when(courseMapper.toEntity(request)).thenReturn(course);
         when(courseRepository.save(course)).thenReturn(savedCourse);
         when(courseMapper.toResponse(savedCourse)).thenReturn(response);
-
         CourseResponse result = courseService.create(request);
-
         assertNotNull(result);
         assertEquals(1L, result.getId());
         assertEquals("ACTIVE", result.getStatus());
@@ -113,7 +114,6 @@ public class CourseServiceImplTest {
     @Test
     public void create_statusNotProvided_setsActive() {
         request.setStatus(null);
-
         Course courseWithoutStatus = new Course();
         courseWithoutStatus.setTitle(request.getTitle());
         courseWithoutStatus.setDescription(request.getDescription());
@@ -183,5 +183,27 @@ public class CourseServiceImplTest {
         verify(courseRepository).findById(courseId);
 
         verify(studyGroupRepository).existsByCourseIdAndStatus(courseId, GroupStatus.ACTIVE);
+    }
+}
+    void getById_WhenCourseExists_ShouldReturnResponse() {
+
+        when(courseRepository.findById(1L)).thenReturn(Optional.of(course));
+        when(courseMapper.toResponse(course)).thenReturn(response);
+
+        CourseResponse result = courseService.getById(1L);
+        assertNotNull(result);
+        assertEquals(1L, result.getId());
+        assertEquals("Java для начинающих", result.getTitle());
+        verify(courseRepository, times(1)).findById(1L);
+        verify(courseMapper, times(1)).toResponse(course);
+    }
+
+    @Test
+    void getById_WhenCourseDoesNotExist_ShouldThrowException() {
+        when(courseRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> courseService.getById(999L));
+        verify(courseRepository, times(1)).findById(999L);
+        verify(courseMapper, never()).toResponse(any());
     }
 }

@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class CourseServiceImpl implements CourseService {
+
     private final CourseMapper courseMapper;
     private final CourseRepository courseRepository;
     private final StudyGroupRepository studyGroupRepository;
@@ -47,5 +48,12 @@ public class CourseServiceImpl implements CourseService {
         }
 
         courseRepository.deleteById(id);
+    }
+}
+    @Transactional(readOnly = true)
+    public CourseResponse getById(Long id) {
+        Course course = courseRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Course", id));
+        return courseMapper.toResponse(course);
     }
 }
