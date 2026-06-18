@@ -4,8 +4,12 @@ import com.covenantcode.crm.dto.course.CourseCreateRequest;
 import com.covenantcode.crm.dto.course.CourseResponse;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.enums.CourseStatus;
+import com.covenantcode.crm.entity.enums.GroupStatus;
+import com.covenantcode.crm.exception.ConflictException;
+import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.CourseMapper;
 import com.covenantcode.crm.repository.CourseRepository;
+import com.covenantcode.crm.repository.StudyGroupRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,6 +35,9 @@ public class CourseServiceImplTest {
     @Mock
     private CourseRepository courseRepository;
 
+    @Mock
+    private StudyGroupRepository studyGroupRepository;
+
     @InjectMocks
     private CourseServiceImpl courseService;
 
@@ -37,6 +45,7 @@ public class CourseServiceImplTest {
     private Course course;
     private Course savedCourse;
     private CourseResponse response;
+    private Course existingCourse;
 
     @BeforeEach
     void setUp() {
@@ -74,6 +83,16 @@ public class CourseServiceImplTest {
                 .createdAt(OffsetDateTime.now())
                 .updatedAt(OffsetDateTime.now())
                 .build();
+
+        existingCourse = new Course();
+        existingCourse.setId(1L);
+        existingCourse.setTitle("Существующий курс");
+        existingCourse.setDescription("Описание существующего курса");
+        existingCourse.setDurationInWeeks(12);
+        existingCourse.setPrice(new BigDecimal("35000.00"));
+        existingCourse.setStatus(CourseStatus.ACTIVE);
+        existingCourse.setCreatedAt(OffsetDateTime.now());
+        existingCourse.setUpdatedAt(OffsetDateTime.now());
     }
 
     @Test
@@ -114,5 +133,55 @@ public class CourseServiceImplTest {
 
         assertNotNull(result);
         assertEquals("ACTIVE", result.getStatus());
+    }
+
+    @Test
+    public void delete_success_whenCourseExistsAndNoActiveGroups() {
+        Long courseId = 1L;
+        when(courseRepository.findById(courseId)).thenReturn(Optional.of(existingCourse));
+        when(studyGroupRepository.existsByCourseIdAndStatus(courseId, GroupStatus.ACTIVE)).thenReturn(false);
+
+        assertDoesNotThrow(() -> courseService.delete(courseId));
+
+        verify(courseRepository).findById(courseId);
+        verify(studyGroupRepository).existsByCourseIdAndStatus(courseId, GroupStatus.ACTIVE);
+        verify(courseRepository).deleteById(courseId);
+    }
+
+    @Test
+    public void delete_throwsResourceNotFoundException_whenCourseNotFound() {
+        Long nonExistentCourseId = 999L;
+        when(courseRepository.findById(nonExistentCourseId)).thenReturn(Optional.empty());
+
+        ResourceNotFoundException exception = assertThrows(
+                ResourceNotFoundException.class,
+                () -> courseService.delete(nonExistentCourseId)
+        );
+
+        assertEquals("Курс с ID " + nonExistentCourseId + " не найден", exception.getMessage());
+
+        verify(studyGroupRepository, never()).existsByCourseIdAndStatus(any(Long.class), any(GroupStatus.class));
+
+        verify(courseRepository, never()).deleteById(any(Long.class));
+    }
+
+    @Test
+    public void delete_throwsConflictException_whenCourseHasActiveGroups() {
+        Long courseId = 1L;
+        when(courseRepository.findById(courseId)).thenReturn(Optional.of(existingCourse));
+        when(studyGroupRepository.existsByCourseIdAndStatus(courseId, GroupStatus.ACTIVE)).thenReturn(true);
+
+        ConflictException exception = assertThrows(
+                ConflictException.class,
+                () -> courseService.delete(courseId)
+        );
+
+        assertEquals("Невозможно удалить курс: существуют активные учебные группы", exception.getMessage());
+
+        verify(courseRepository, never()).deleteById(any(Long.class));
+
+        verify(courseRepository).findById(courseId);
+
+        verify(studyGroupRepository).existsByCourseIdAndStatus(courseId, GroupStatus.ACTIVE);
     }
 }

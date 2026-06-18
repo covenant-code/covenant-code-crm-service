@@ -5,4 +5,6 @@ import com.covenantcode.crm.dto.course.CourseResponse;
 
 public interface CourseService {
     CourseResponse create(CourseCreateRequest request);
+
+    void delete(Long id);
 }
