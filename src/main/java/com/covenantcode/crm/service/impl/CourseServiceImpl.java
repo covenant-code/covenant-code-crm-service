@@ -4,8 +4,12 @@ import com.covenantcode.crm.dto.course.CourseCreateRequest;
 import com.covenantcode.crm.dto.course.CourseResponse;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.enums.CourseStatus;
+import com.covenantcode.crm.entity.enums.GroupStatus;
+import com.covenantcode.crm.exception.ConflictException;
+import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.CourseMapper;
 import com.covenantcode.crm.repository.CourseRepository;
+import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.service.CourseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -16,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CourseServiceImpl implements CourseService {
     private final CourseMapper courseMapper;
     private final CourseRepository courseRepository;
+    private final StudyGroupRepository studyGroupRepository;
 
     @Override
     @Transactional
@@ -28,5 +33,19 @@ public class CourseServiceImpl implements CourseService {
 
         Course savedCourse = courseRepository.save(course);
         return courseMapper.toResponse(savedCourse);
+    }
+
+    @Override
+    @Transactional
+    public void delete(Long id) {
+        Course course = courseRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Курс с ID " + id + " не найден"));
+
+        boolean hasActiveGroups = studyGroupRepository.existsByCourseIdAndStatus(id, GroupStatus.ACTIVE);
+
+        if (hasActiveGroups) {
+            throw new ConflictException("Невозможно удалить курс: существуют активные учебные группы");
+        }
+
+        courseRepository.deleteById(id);
     }
 }
