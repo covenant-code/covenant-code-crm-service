@@ -17,18 +17,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 
-import java.util.HashMap;
-import java.util.Map;
-
-import static org.hamcrest.Matchers.hasItems;
-import static org.hibernate.validator.internal.util.Contracts.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 
 public class AuthControllerIntegrationTest extends BaseIntegrationTest {
@@ -58,7 +50,6 @@ public class AuthControllerIntegrationTest extends BaseIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        // Создаем роль MANAGER (если её нет)
         testRole = roleRepository.findByName(RoleName.MANAGER)
                 .orElseGet(() -> {
                     Role role = new Role();
@@ -66,7 +57,6 @@ public class AuthControllerIntegrationTest extends BaseIntegrationTest {
                     return roleRepository.save(role);
                 });
 
-        // Создаем тестового пользователя для тестов логина
         testUser = User.builder()
                 .firstName("Тест")
                 .lastName("Пользователь")
@@ -148,13 +138,10 @@ public class AuthControllerIntegrationTest extends BaseIntegrationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors").isArray())
-                .andExpect(jsonPath("$.errors", hasItems(
-                        "email: Некорректный формат email",
-                        "firstName: Имя обязательно"
-                )));
+                .andExpect(jsonPath("$.errors[?(@.field == 'email' && @.message == 'Некорректный формат email')]").exists())
+                .andExpect(jsonPath("$.errors[?(@.field == 'firstName' && @.message == 'Имя обязательно')]").exists());
     }
 
-    // ===== Тесты ЛОГИНА (переписанные) =====
     @Test
     @DisplayName("Успешный вход с корректными учетными данными")
     void testControllerIntegrationLoginSuccess() throws Exception {
