@@ -32,7 +32,6 @@ public class AuthController {
         return authService.register(request);
     }
 
-    //Аутентификация пользователя
     @PostMapping("/login")
     @Operation(summary = "Аутентификация пользователя")
     @ApiResponses({

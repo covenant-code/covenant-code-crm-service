@@ -7,11 +7,11 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.Map;
 
 @Slf4j
 @RestControllerAdvice
@@ -29,10 +29,12 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleValidation(MethodArgumentNotValidException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Validation failed");
         problem.setType(URI.create("validation-error"));
-        problem.setProperty("timestamp", Instant.now());
         problem.setProperty("errors", ex.getBindingResult().getFieldErrors().stream()
-            .map(e -> e.getField() + ": " + e.getDefaultMessage())
-            .toList());
+                .map(e -> Map.of(
+                        "field", e.getField(),
+                        "message", e.getDefaultMessage()
+                ))
+                .toList());
         return problem;
     }
 
