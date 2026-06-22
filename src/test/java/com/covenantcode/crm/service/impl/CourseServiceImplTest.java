@@ -4,9 +4,12 @@ import com.covenantcode.crm.dto.course.CourseCreateRequest;
 import com.covenantcode.crm.dto.course.CourseResponse;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.enums.CourseStatus;
+import com.covenantcode.crm.entity.enums.GroupStatus;
+import com.covenantcode.crm.exception.ConflictException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.CourseMapper;
 import com.covenantcode.crm.repository.CourseRepository;
+import com.covenantcode.crm.repository.StudyGroupRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +35,9 @@ public class CourseServiceImplTest {
     @Mock
     private CourseRepository courseRepository;
 
+    @Mock
+    private StudyGroupRepository studyGroupRepository;
+
     @InjectMocks
     private CourseServiceImpl courseService;
 
@@ -40,6 +46,7 @@ public class CourseServiceImplTest {
     private Course savedCourse;
     private CourseResponse response;
     private CourseResponse courseResponse;
+    private Course existingCourse;
 
     @BeforeEach
     void setUp() {
@@ -79,6 +86,16 @@ public class CourseServiceImplTest {
                 .createdAt(OffsetDateTime.now())
                 .updatedAt(OffsetDateTime.now())
                 .build();
+
+        existingCourse = new Course();
+        existingCourse.setId(1L);
+        existingCourse.setTitle("Существующий курс");
+        existingCourse.setDescription("Описание существующего курса");
+        existingCourse.setDurationInWeeks(12);
+        existingCourse.setPrice(new BigDecimal("35000.00"));
+        existingCourse.setStatus(CourseStatus.ACTIVE);
+        existingCourse.setCreatedAt(OffsetDateTime.now());
+        existingCourse.setUpdatedAt(OffsetDateTime.now());
     }
 
     @Test
@@ -139,5 +156,51 @@ public class CourseServiceImplTest {
         assertThrows(ResourceNotFoundException.class, () -> courseService.getById(999L));
         verify(courseRepository, times(1)).findById(999L);
         verify(courseMapper, never()).toResponse(any());
+    }
+
+    @Test
+    public void delete_success_whenCourseExistsAndNoActiveGroups() {
+        Long courseId = 1L;
+        when(courseRepository.findById(courseId)).thenReturn(Optional.of(existingCourse));
+        when(studyGroupRepository.existsByCourseIdAndStatus(courseId, GroupStatus.ACTIVE)).thenReturn(false);
+
+        assertDoesNotThrow(() -> courseService.delete(courseId));
+
+        verify(courseRepository).findById(courseId);
+        verify(studyGroupRepository).existsByCourseIdAndStatus(courseId, GroupStatus.ACTIVE);
+        verify(courseRepository).deleteById(courseId);
+    }
+
+    @Test
+    public void delete_throwsResourceNotFoundException_whenCourseNotFound() {
+        Long nonExistentCourseId = 999L;
+        when(courseRepository.findById(nonExistentCourseId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> courseService.delete(nonExistentCourseId));
+
+        verify(studyGroupRepository, never()).existsByCourseIdAndStatus(any(Long.class), any(GroupStatus.class));
+
+        verify(courseRepository, never()).deleteById(any(Long.class));
+    }
+
+    @Test
+    public void delete_throwsConflictException_whenCourseHasActiveGroups() {
+        Long courseId = 1L;
+        when(courseRepository.findById(courseId)).thenReturn(Optional.of(existingCourse));
+        when(studyGroupRepository.existsByCourseIdAndStatus(courseId, GroupStatus.ACTIVE)).thenReturn(true);
+
+        ConflictException exception = assertThrows(
+                ConflictException.class,
+                () -> courseService.delete(courseId)
+        );
+
+        assertEquals("Невозможно удалить курс: существуют активные учебные группы", exception.getMessage());
+
+        verify(courseRepository, never()).deleteById(any(Long.class));
+
+        verify(courseRepository).findById(courseId);
+
+        verify(studyGroupRepository).existsByCourseIdAndStatus(courseId, GroupStatus.ACTIVE);
     }
 }

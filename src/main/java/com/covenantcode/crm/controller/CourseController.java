@@ -48,4 +48,19 @@ public class CourseController {
     public ResponseEntity<CourseResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(courseService.getById(id));
     }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Удаление курса по ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Курс удален"),
+            @ApiResponse(responseCode = "401", description = "Нет токена или токен недействителен"),
+            @ApiResponse(responseCode = "403", description = "Роль не ADMIN"),
+            @ApiResponse(responseCode = "404", description = "Курс не найден"),
+            @ApiResponse(responseCode = "409", description = "У курса есть активные группы")
+    })
+    void delete(@PathVariable Long id){
+        courseService.delete(id);
+    }
 }
