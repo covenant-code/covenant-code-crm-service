@@ -1,21 +1,23 @@
 package com.covenantcode.crm;
 
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.containers.*;
 
 @SpringBootTest
-@Testcontainers
+@AutoConfigureMockMvc
 public abstract class BaseIntegrationTest {
 
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
-        .withDatabaseName("test_db")
-        .withUsername("test_user")
-        .withPassword("test_password");
+    static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+            .withDatabaseName("test_db")
+            .withUsername("test_user")
+            .withPassword("test_password");
+
+    static {
+        postgres.start();  // стартует один раз на весь JVM-процесс
+    }
 
     @DynamicPropertySource
     static void configureDataSource(DynamicPropertyRegistry registry) {
