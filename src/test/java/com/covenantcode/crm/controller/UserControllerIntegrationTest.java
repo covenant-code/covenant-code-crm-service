@@ -5,6 +5,7 @@ import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.RoleName;
 import com.covenantcode.crm.repository.RoleRepository;
+import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.security.JwtService;
 import org.junit.jupiter.api.*;
@@ -36,6 +37,9 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     private JwtService jwtService;
+
+    @Autowired
+    private StudyGroupRepository studyGroupRepository;
 
     private String adminToken;
     private String managerToken;
@@ -86,10 +90,10 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
 
     @AfterEach
     void tearDown() {
+        studyGroupRepository.deleteAll();
         userRepository.deleteAll();
     }
 
-//    @Disabled
     @Test
     public void getAllUsers_withAdminToken_success() throws Exception {
         mockMvc.perform(get("/api/v1/users")
@@ -110,7 +114,6 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-//    @Disabled
     @Test
     public void getAllUsers_withoutToken_unauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/users"))

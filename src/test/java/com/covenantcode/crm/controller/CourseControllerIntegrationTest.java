@@ -3,7 +3,15 @@ package com.covenantcode.crm.controller;
 import com.covenantcode.crm.BaseIntegrationTest;
 import com.covenantcode.crm.dto.course.CourseCreateRequest;
 import com.covenantcode.crm.entity.Course;
+import com.covenantcode.crm.entity.Role;
+import com.covenantcode.crm.entity.StudyGroup;
+import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.CourseStatus;
+import com.covenantcode.crm.entity.enums.GroupStatus;
+import com.covenantcode.crm.entity.enums.RoleName;
+import com.covenantcode.crm.repository.RoleRepository;
+import com.covenantcode.crm.repository.StudyGroupRepository;
+import com.covenantcode.crm.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
@@ -16,9 +24,12 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Optional;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @AutoConfigureMockMvc(addFilters = false)
@@ -32,6 +43,15 @@ public class CourseControllerIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     private CourseRepository courseRepository;
+
+    @Autowired
+    private RoleRepository roleRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private StudyGroupRepository studyGroupRepository;
 
     @Test
     @WithMockUser(roles = "ADMIN")
@@ -167,5 +187,117 @@ public class CourseControllerIntegrationTest extends BaseIntegrationTest {
     void getById_WhenUnauthorized_ShouldReturnUnauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/courses/1"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/courses/{id} - ADMIN успешно удаляет курс → 204 No Content")
+    @WithMockUser(roles = "ADMIN")
+    public void deleteCourse_success_returns204() throws Exception {
+        CourseCreateRequest createRequest = new CourseCreateRequest();
+        createRequest.setTitle("Курс для удаления");
+        createRequest.setDescription("Этот курс будет удален");
+        createRequest.setDurationInWeeks(12);
+        createRequest.setPrice(new BigDecimal("25000.00"));
+        createRequest.setStatus(CourseStatus.ACTIVE);
+
+        Course course = new Course();
+        course.setTitle(createRequest.getTitle());
+        course.setDescription(createRequest.getDescription());
+        course.setDurationInWeeks(createRequest.getDurationInWeeks());
+        course.setPrice(createRequest.getPrice());
+        course.setStatus(CourseStatus.ACTIVE);
+
+        Course savedCourse = courseRepository.save(course);
+        Long courseId = savedCourse.getId();
+
+        mockMvc.perform(delete("/api/v1/courses/{id}", courseId)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNoContent());
+
+        assertTrue(courseRepository.findById(courseId).isEmpty(),
+                "Курс должен быть удален из базы данных");
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/courses/{id} - курс с активными группами → 409 Conflict")
+    @WithMockUser(roles = "ADMIN")
+    public void deleteCourse_withActiveGroups_returns409() throws Exception {
+        Course course = new Course();
+        course.setTitle("Курс с активными группами");
+        course.setDescription("Этот курс имеет активные учебные группы");
+        course.setDurationInWeeks(16);
+        course.setPrice(new BigDecimal("35000.00"));
+        course.setStatus(CourseStatus.ACTIVE);
+        Course savedCourse = courseRepository.save(course);
+        Long courseId = savedCourse.getId();
+
+        Optional<Role> existingRole = roleRepository.findByName(RoleName.TEACHER);
+        Role teacherRole;
+        if (existingRole.isPresent()) {
+            teacherRole = existingRole.get();
+        } else {
+            teacherRole = Role.builder()
+                    .name(RoleName.TEACHER)
+                    .build();
+            teacherRole = roleRepository.save(teacherRole);
+        }
+
+        User teacher = User.builder()
+                .firstName("Иван")
+                .lastName("Петров")
+                .email("teacher_activetest@example.com")
+                .password("password123")
+                .role(teacherRole)
+                .enabled(true)
+                .build();
+        User savedTeacher = userRepository.save(teacher);
+
+        StudyGroup studyGroup = StudyGroup.builder()
+                .name("Группа Java-16")
+                .course(savedCourse)
+                .teacher(savedTeacher)
+                .startDate(LocalDate.now())
+                .status(GroupStatus.ACTIVE)
+                .students(new HashSet<>())
+                .build();
+        studyGroupRepository.save(studyGroup);
+
+        mockMvc.perform(delete("/api/v1/courses/{id}", courseId)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.type").value("conflict"))
+                .andExpect(jsonPath("$.detail").value("Невозможно удалить курс: существуют активные учебные группы"));
+
+        assertTrue(courseRepository.findById(courseId).isPresent(),
+                "Курс должен оставаться в базе данных");
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/courses/{id} - курс не найден → 404 Not Found")
+    @WithMockUser(roles = "ADMIN")
+    public void deleteCourse_notFound_returns404() throws Exception {
+        Long nonExistentCourseId = 99999L;
+
+        mockMvc.perform(delete("/api/v1/courses/{id}", nonExistentCourseId)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.type").value("resource-not-found"));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/courses/{id} - MANAGER пытается удалить курс → 403 Forbidden")
+    @WithMockUser(roles = "MANAGER")
+    public void deleteCourse_withManagerRole_returns403() throws Exception {
+        Course course = new Course();
+        course.setTitle("Курс для проверки доступа менеджера");
+        course.setDescription("Менеджер не должен удалять курс");
+        course.setDurationInWeeks(10);
+        course.setPrice(new BigDecimal("15000.00"));
+        course.setStatus(CourseStatus.ACTIVE);
+        Course savedCourse = courseRepository.save(course);
+
+        mockMvc.perform(delete("/api/v1/courses/{id}", savedCourse.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
     }
 }
