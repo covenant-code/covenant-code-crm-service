@@ -2,6 +2,7 @@ package com.covenantcode.crm.controller;
 
 import com.covenantcode.crm.dto.course.CourseCreateRequest;
 import com.covenantcode.crm.dto.course.CourseResponse;
+import com.covenantcode.crm.dto.course.CourseUpdateRequest;
 import com.covenantcode.crm.service.CourseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -62,5 +63,22 @@ public class CourseController {
     })
     void delete(@PathVariable Long id){
         courseService.delete(id);
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Обновить курс по ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Курс обновлён"),
+            @ApiResponse(responseCode = "400", description = "Ошибка валидации"),
+            @ApiResponse(responseCode = "401", description = "Нет токена или токен недействителен"),
+            @ApiResponse(responseCode = "403", description = "Недостаточно прав"),
+            @ApiResponse(responseCode = "404", description = "Курс не найден")
+    })
+    public ResponseEntity<CourseResponse> update(
+            @PathVariable Long id,
+            @Valid @RequestBody CourseUpdateRequest request
+    ) {
+        return ResponseEntity.ok(courseService.update(id, request));
     }
 }

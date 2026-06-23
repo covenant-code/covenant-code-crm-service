@@ -2,6 +2,7 @@ package com.covenantcode.crm.service.impl;
 
 import com.covenantcode.crm.dto.course.CourseCreateRequest;
 import com.covenantcode.crm.dto.course.CourseResponse;
+import com.covenantcode.crm.dto.course.CourseUpdateRequest;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.enums.CourseStatus;
 import com.covenantcode.crm.entity.enums.GroupStatus;
@@ -202,5 +203,61 @@ public class CourseServiceImplTest {
         verify(courseRepository).findById(courseId);
 
         verify(studyGroupRepository).existsByCourseIdAndStatus(courseId, GroupStatus.ACTIVE);
+    }
+
+    @Test
+    void update_shouldReturnUpdatedCourse_whenCourseExists() {
+        Long id = 1L;
+
+        CourseUpdateRequest request = new CourseUpdateRequest();
+        request.setTitle("New title");
+        request.setPrice(new BigDecimal("199.99"));
+        request.setDurationInWeeks(12);
+
+        Course course = new Course();
+        course.setId(id);
+        course.setTitle("Old title");
+        course.setPrice(new BigDecimal("99.99"));
+        course.setDurationInWeeks(8);
+
+        Course updatedCourse = new Course();
+        updatedCourse.setId(id);
+        updatedCourse.setTitle("New title");
+        updatedCourse.setPrice(new BigDecimal("199.99"));
+        updatedCourse.setDurationInWeeks(12);
+
+        CourseResponse response = new CourseResponse();
+        response.setId(id);
+        response.setTitle("New title");
+        response.setPrice(new BigDecimal("199.99"));
+        response.setDurationInWeeks(12);
+
+        when(courseRepository.findById(id)).thenReturn(Optional.of(course));
+        when(courseRepository.save(any(Course.class))).thenReturn(updatedCourse);
+        when(courseMapper.toResponse(updatedCourse)).thenReturn(response);
+
+        CourseResponse result = courseService.update(id, request);
+
+        assertNotNull(result);
+        assertEquals("New title", result.getTitle());
+        assertEquals(new BigDecimal("199.99"), result.getPrice());
+
+        verify(courseRepository, times(1)).save(any(Course.class));
+    }
+
+    @Test
+    void update_shouldThrowResourceNotFoundException_whenCourseNotFound() {
+        Long id = 999L;
+
+        CourseUpdateRequest request = new CourseUpdateRequest();
+        request.setTitle("New title");
+        request.setPrice(new BigDecimal("199.99"));
+        request.setDurationInWeeks(12);
+
+        when(courseRepository.findById(id)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> courseService.update(id, request));
+
+        verify(courseRepository, never()).save(any());
     }
 }

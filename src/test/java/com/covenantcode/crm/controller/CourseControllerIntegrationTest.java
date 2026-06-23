@@ -2,6 +2,7 @@ package com.covenantcode.crm.controller;
 
 import com.covenantcode.crm.BaseIntegrationTest;
 import com.covenantcode.crm.dto.course.CourseCreateRequest;
+import com.covenantcode.crm.dto.course.CourseUpdateRequest;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.StudyGroup;
@@ -28,6 +29,7 @@ import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Optional;
 
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -184,7 +186,7 @@ public class CourseControllerIntegrationTest extends BaseIntegrationTest {
 
     @Disabled
     @Test
-    void getById_WhenUnauthorized_ShouldReturnUnauthorized() throws Exception {
+    void getById_WhenUnauthorized_ShouldReturn401() throws Exception {
         mockMvc.perform(get("/api/v1/courses/1"))
                 .andExpect(status().isUnauthorized());
     }
@@ -298,6 +300,119 @@ public class CourseControllerIntegrationTest extends BaseIntegrationTest {
 
         mockMvc.perform(delete("/api/v1/courses/{id}", savedCourse.getId())
                         .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void update_shouldReturn200AndUpdateCourse() throws Exception {
+        Course course = Course.builder()
+                .title("Old title")
+                .description("Old description")
+                .durationInWeeks(8)
+                .price(new BigDecimal("99.99"))
+                .status(CourseStatus.ACTIVE)
+                .build();
+
+        course = courseRepository.save(course);
+
+        CourseUpdateRequest request = new CourseUpdateRequest(
+                "New title",
+                "New description",
+                12,
+                new BigDecimal("199.99"),
+                CourseStatus.ACTIVE
+        );
+
+        mockMvc.perform(put("/api/v1/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("New title"))
+                .andExpect(jsonPath("$.description").value("New description"))
+                .andExpect(jsonPath("$.durationInWeeks").value(12))
+                .andExpect(jsonPath("$.price").value(199.99))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+
+        Course updated = courseRepository.findById(course.getId()).orElseThrow();
+        assertThat(updated.getTitle()).isEqualTo("New title");
+        assertThat(updated.getDescription()).isEqualTo("New description");
+        assertThat(updated.getDurationInWeeks()).isEqualTo(12);
+        assertThat(updated.getPrice()).isEqualByComparingTo("199.99");
+        assertThat(updated.getStatus()).isEqualTo(CourseStatus.ACTIVE);
+    }
+
+    @Test
+    @WithMockUser(username = "manager", roles = {"MANAGER"})
+    void update_shouldReturn200ForManagerRole() throws Exception {
+        Course course = Course.builder()
+                .title("Old title")
+                .description("Old description")
+                .durationInWeeks(8)
+                .price(new BigDecimal("99.99"))
+                .status(CourseStatus.ACTIVE)
+                .build();
+
+        course = courseRepository.save(course);
+
+        CourseUpdateRequest request = new CourseUpdateRequest(
+                "Updated title",
+                "Updated description",
+                10,
+                new BigDecimal("149.99"),
+                CourseStatus.ACTIVE
+        );
+
+        mockMvc.perform(put("/api/v1/courses/{id}", course.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Updated title"));
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void update_shouldReturn404_whenCourseNotFound() throws Exception {
+        CourseUpdateRequest request = new CourseUpdateRequest(
+                "New title",
+                "New description",
+                12,
+                new BigDecimal("199.99"),
+                CourseStatus.ACTIVE
+        );
+
+        mockMvc.perform(put("/api/v1/courses/{id}", 99999L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void update_shouldReturn400_whenValidationFails() throws Exception {
+        CourseUpdateRequest request = new CourseUpdateRequest(
+                "",
+                "desc",
+                -1,
+                new BigDecimal("-10"),
+                null
+        );
+
+        mockMvc.perform(put("/api/v1/courses/{id}", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "TEACHER")
+    void update_shouldReturn403_forTeacherRole() throws Exception {
+        CourseUpdateRequest request = new CourseUpdateRequest(
+                "title", "desc", 8, new BigDecimal("100"), CourseStatus.ACTIVE
+        );
+        mockMvc.perform(put("/api/v1/courses/{id}", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isForbidden());
     }
 }

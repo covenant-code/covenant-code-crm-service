@@ -2,6 +2,7 @@ package com.covenantcode.crm.service.impl;
 
 import com.covenantcode.crm.dto.course.CourseCreateRequest;
 import com.covenantcode.crm.dto.course.CourseResponse;
+import com.covenantcode.crm.dto.course.CourseUpdateRequest;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.enums.CourseStatus;
 import com.covenantcode.crm.entity.enums.GroupStatus;
@@ -56,5 +57,21 @@ public class CourseServiceImpl implements CourseService {
         }
 
         courseRepository.deleteById(id);
+    }
+
+    @Override
+    @Transactional
+    public CourseResponse update(Long id, CourseUpdateRequest request) {
+        Course course = courseRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Course", id));
+
+        course.setTitle(request.getTitle());
+        course.setDescription(request.getDescription());
+        course.setDurationInWeeks(request.getDurationInWeeks());
+        course.setPrice(request.getPrice());
+        course.setStatus(request.getStatus());
+
+        Course savedCourse = courseRepository.save(course);
+        return courseMapper.toResponse(savedCourse);
     }
 }
