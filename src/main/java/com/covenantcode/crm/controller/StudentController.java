@@ -1,14 +1,20 @@
 package com.covenantcode.crm.controller;
 
+import com.covenantcode.crm.dto.lead.LeadResponse;
 import com.covenantcode.crm.dto.student.StudentCreateRequest;
 import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.service.StudentService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -34,5 +40,29 @@ public class StudentController {
     })
     public StudentResponse create(@Valid @RequestBody StudentCreateRequest request) {
         return studentService.create(request);
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(
+            summary = "Получить список студентов с пагинацией и поиском",
+            description = "Возвращает страницу студентов. Доступно ролям ADMIN, MANAGER"
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Список студентов найден",
+                    content =
+                    @Content(mediaType = "application/json")
+            ),
+            @ApiResponse(responseCode = "403", description = "Доступ запрещён")
+    })
+
+    public Page<StudentResponse> getAll(
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.unsorted());
+        return studentService.getAll(search, pageable);
     }
 }
