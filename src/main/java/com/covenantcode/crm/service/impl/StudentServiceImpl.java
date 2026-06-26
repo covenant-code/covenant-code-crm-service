@@ -2,17 +2,23 @@ package com.covenantcode.crm.service.impl;
 
 import com.covenantcode.crm.dto.student.StudentCreateRequest;
 import com.covenantcode.crm.dto.student.StudentResponse;
+import com.covenantcode.crm.entity.Lead;
 import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.exception.ConflictException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.StudentMapper;
 import com.covenantcode.crm.repository.StudentRepository;
+import com.covenantcode.crm.repository.StudentSpecifications;
 import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.service.StudentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -70,5 +76,17 @@ public class StudentServiceImpl implements StudentService {
         Student savedStudent = studentRepository.saveAndFlush(student);
 
         return studentMapper.toResponse(savedStudent);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<StudentResponse> getAll(String search, Pageable pageable) {
+        Specification<Student> spec = Specification.where(null);
+
+        if (StringUtils.hasText(search)) {
+            spec = spec.and(StudentSpecifications.searchByText(search));
+        }
+        return studentRepository.findAll(spec, pageable)
+                .map(studentMapper::toResponse);
     }
 }
