@@ -2,10 +2,16 @@ package com.covenantcode.crm.controller;
 
 import com.covenantcode.crm.BaseIntegrationTest;
 import com.covenantcode.crm.dto.lead.LeadCommentCreateRequest;
-import com.covenantcode.crm.dto.lead.LeadCommentResponse;
 import com.covenantcode.crm.dto.lead.LeadConvertRequest;
 import com.covenantcode.crm.dto.lead.LeadCreateRequest;
-import com.covenantcode.crm.entity.*;
+import com.covenantcode.crm.dto.lead.LeadCommentResponse;
+import com.covenantcode.crm.dto.lead.LeadUpdateRequest;
+
+import com.covenantcode.crm.entity.Course;
+import com.covenantcode.crm.entity.Role;
+import com.covenantcode.crm.entity.User;
+import com.covenantcode.crm.entity.Lead;
+import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.enums.CourseStatus;
 import com.covenantcode.crm.entity.enums.LeadStatus;
 import com.covenantcode.crm.entity.enums.RoleName;
@@ -30,14 +36,20 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
+
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -268,22 +280,16 @@ public class LeadControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-// Добавьте в существующий класс LeadControllerIntegrationTest
-
-    // ===== Тесты получения всех лидов с пагинацией и фильтрацией =====
-
     @Test
     @DisplayName("Получить все лиды без фильтров - возвращает все лиды постранично")
     void testControllerIntegrationGetAllLeadsNoFiltersShouldReturnAllWithPagination() throws Exception {
-        // Создаем 3 лида с разными статусами
+
         Lead lead1 = createLeadWithStatus(LeadStatus.NEW);
         Lead lead2 = createLeadWithStatus(LeadStatus.IN_PROGRESS);
         Lead lead3 = createLeadWithStatus(LeadStatus.CONTACTED);
 
-        // Получаем все ID сохранённых лидов
         List<Long> leadIds = List.of(lead1.getId(), lead2.getId(), lead3.getId());
 
-        // Выполняем один запрос и проверяем результат
         mockMvc.perform(get(baseUrl)
                         .param("page", "0")
                         .param("size", "20"))
@@ -297,11 +303,10 @@ public class LeadControllerIntegrationTest extends BaseIntegrationTest {
                 )));
     }
 
-
     @Test
     @DisplayName("Фильтрация лидов по статусу NEW - возвращает только NEW лиды")
     void testControllerIntegrationGetAllLeadsByStatusNewShouldReturnOnlyNew() throws Exception {
-        // Создаем 2 NEW лида и 1 IN_PROGRESS
+
         Lead lead1 = createLeadWithStatus(LeadStatus.NEW);
         Lead lead2 = createLeadWithStatus(LeadStatus.NEW);
         Lead lead3 = createLeadWithStatus(LeadStatus.IN_PROGRESS);
@@ -319,7 +324,7 @@ public class LeadControllerIntegrationTest extends BaseIntegrationTest {
     @Test
     @DisplayName("Поиск лидов по части телефона - возвращает лиды с совпадающим номером")
     void testControllerIntegrationSearchLeadsByPhonePartShouldReturnMatchingLeads() throws Exception {
-        // Создаем лид с нужным телефоном
+
         Lead lead = new Lead();
         lead.setFirstName("Client");
         lead.setPhone("+79161234567");
@@ -353,7 +358,7 @@ public class LeadControllerIntegrationTest extends BaseIntegrationTest {
     private Lead createLeadWithStatus(LeadStatus status) {
         Lead lead = new Lead();
         lead.setFirstName("Test_" + status.name());
-        lead.setPhone("+7900" + (int)(Math.random() * 100000000));
+        lead.setPhone("+7900" + (int) (Math.random() * 100000000));
         lead.setStatus(status);
         return leadRepository.saveAndFlush(lead);
     }
@@ -505,7 +510,6 @@ public class LeadControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-  //  @Disabled
     @Test
     @DisplayName("POST /{id}/convert — Без токена (401)")
     @WithAnonymousUser
@@ -672,7 +676,7 @@ public class LeadControllerIntegrationTest extends BaseIntegrationTest {
         Lead lead = createLeadWithStatus(LeadStatus.NEW);
 
         LeadCommentCreateRequest request = LeadCommentCreateRequest.builder()
-                .text("   ") // Только пробелы
+                .text("   ")
                 .build();
 
         mockMvc.perform(post(baseUrl + "/{id}/comments", lead.getId())
@@ -732,7 +736,7 @@ public class LeadControllerIntegrationTest extends BaseIntegrationTest {
     @DisplayName("POST /{id}/comments — проверка поля createdAt: значение устанавливается автоматически и близко к текущему времени")
     @WithMockUser(username = "manager@test.com", roles = "MANAGER")
     void addComment_CheckCreatedAtField_ShouldBeCloseToCurrentTime() throws Exception {
-        // Arrange
+
         Lead lead = createLeadWithStatus(LeadStatus.NEW);
 
         String commentText = "Тестовый комментарий для проверки createdAt";
@@ -741,10 +745,8 @@ public class LeadControllerIntegrationTest extends BaseIntegrationTest {
                 .text(commentText)
                 .build();
 
-        // Запоминаем время до запроса
         LocalDateTime beforeRequest = LocalDateTime.now();
 
-        // Act
         MvcResult result = mockMvc.perform(post(baseUrl + "/{id}/comments", lead.getId())
                         .contentType(APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
@@ -758,15 +760,132 @@ public class LeadControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.createdAt").exists())
                 .andReturn();
 
-        // Запоминаем время после запроса
         LocalDateTime afterRequest = LocalDateTime.now();
 
-        // Assert - проверяем, что createdAt находится между beforeRequest и afterRequest
         String responseJson = result.getResponse().getContentAsString();
         LeadCommentResponse response = objectMapper.readValue(responseJson, LeadCommentResponse.class);
 
         assertNotNull(response.getCreatedAt());
         assertTrue(response.getCreatedAt().isAfter(beforeRequest) || response.getCreatedAt().isEqual(beforeRequest));
         assertTrue(response.getCreatedAt().isBefore(afterRequest) || response.getCreatedAt().isEqual(afterRequest));
+    }
+
+    @Test
+    @DisplayName("Тест 1: обновление данных работает → HTTP 200")
+    @WithMockUser(roles = "MANAGER")
+    void updateLead_WithValidData_ShouldReturn200() throws Exception {
+
+        Lead lead = new Lead();
+        lead.setFirstName("Иван");
+        lead.setLastName("Петров");
+        lead.setPhone("+79161111111");
+        lead.setEmail("ivan@mail.ru");
+        lead.setSource("Сайт");
+        lead.setStatus(LeadStatus.NEW);
+        lead.setComment("Старый комментарий");
+        Lead savedLead = leadRepository.saveAndFlush(lead);
+
+        LeadUpdateRequest updateRequest = new LeadUpdateRequest();
+        updateRequest.setFirstName("Алексей");
+        updateRequest.setLastName("Смирнов");
+        updateRequest.setPhone("+79162222222");
+        updateRequest.setEmail("alexey@mail.ru");
+        updateRequest.setSource("Реклама");
+        updateRequest.setComment("Новый комментарий");
+        updateRequest.setInterestedCourseId(null);
+        updateRequest.setAssignedManagerId(null);
+
+        mockMvc.perform(put(baseUrl + "/{id}", savedLead.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.phone").value("+79162222222"))
+                .andExpect(jsonPath("$.firstName").value("Алексей"))
+                .andExpect(jsonPath("$.lastName").value("Смирнов"))
+                .andExpect(jsonPath("$.email").value("alexey@mail.ru"))
+                .andExpect(jsonPath("$.source").value("Реклама"))
+                .andExpect(jsonPath("$.comment").value("Новый комментарий"))
+                .andExpect(jsonPath("$.status").value(LeadStatus.NEW.name()));
+
+        Lead updatedLead = leadRepository.findById(savedLead.getId()).orElseThrow();
+        assertThat(updatedLead.getPhone()).isEqualTo("+79162222222");
+        assertThat(updatedLead.getStatus()).isEqualTo(LeadStatus.NEW);
+    }
+
+    @Test
+    @DisplayName("Тест 2: конвертированный лид — обновление заблокировано → HTTP 400")
+    @WithMockUser(roles = "MANAGER")
+    void updateLead_WithConvertedStatus_ShouldReturn400() throws Exception {
+
+        Lead lead = new Lead();
+        lead.setFirstName("Иван");
+        lead.setLastName("Петров");
+        lead.setPhone("+79161111111");
+        lead.setEmail("ivan@mail.ru");
+        lead.setSource("Сайт");
+        lead.setStatus(LeadStatus.CONVERTED_TO_STUDENT);
+        lead.setComment("Конвертирован в студента");
+        Lead savedLead = leadRepository.saveAndFlush(lead);
+
+        LeadUpdateRequest updateRequest = new LeadUpdateRequest();
+        updateRequest.setFirstName("Алексей");
+        updateRequest.setPhone("+79162222222");
+
+        mockMvc.perform(put(baseUrl + "/{id}", savedLead.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.type").value("bad-request"))
+                .andExpect(jsonPath("$.detail").value("Нельзя редактировать конвертированного лида"));
+
+        Lead unchangedLead = leadRepository.findById(savedLead.getId()).orElseThrow();
+        assertThat(unchangedLead.getPhone()).isEqualTo("+79161111111");
+        assertThat(unchangedLead.getStatus()).isEqualTo(LeadStatus.CONVERTED_TO_STUDENT);
+    }
+
+    @Test
+    @DisplayName("Тест 3: лид не найден → HTTP 404")
+    @WithMockUser(roles = "MANAGER")
+    void updateLead_WithNonExistentId_ShouldReturn404() throws Exception {
+        Long nonExistentId = 9999L;
+
+        LeadUpdateRequest updateRequest = new LeadUpdateRequest();
+        updateRequest.setFirstName("Алексей");
+        updateRequest.setPhone("+79162222222");
+
+        mockMvc.perform(put(baseUrl + "/{id}", nonExistentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.type").value("resource-not-found"))
+                .andExpect(jsonPath("$.detail").value("Lead с id " + nonExistentId + " не найден"));
+    }
+
+    @Test
+    @DisplayName("Тест 4: пользователь с ролью TEACHER → HTTP 403")
+    @WithMockUser(roles = "TEACHER")
+    void updateLead_WithTeacherRole_ShouldReturn403() throws Exception {
+
+        Lead lead = new Lead();
+        lead.setFirstName("Иван");
+        lead.setLastName("Петров");
+        lead.setPhone("+79161111111");
+        lead.setEmail("ivan@mail.ru");
+        lead.setSource("Сайт");
+        lead.setStatus(LeadStatus.NEW);
+        Lead savedLead = leadRepository.saveAndFlush(lead);
+
+        LeadUpdateRequest updateRequest = new LeadUpdateRequest();
+        updateRequest.setFirstName("Алексей");
+        updateRequest.setPhone("+79162222222");
+
+        mockMvc.perform(put(baseUrl + "/{id}", savedLead.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andExpect(status().isForbidden());
+
+        Lead unchangedLead = leadRepository.findById(savedLead.getId()).orElseThrow();
+        assertThat(unchangedLead.getPhone()).isEqualTo("+79161111111");
+        assertThat(unchangedLead.getStatus()).isEqualTo(LeadStatus.NEW);
     }
 }

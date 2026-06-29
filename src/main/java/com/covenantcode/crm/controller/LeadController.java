@@ -5,6 +5,7 @@ import com.covenantcode.crm.dto.lead.LeadCommentResponse;
 import com.covenantcode.crm.dto.lead.LeadConvertRequest;
 import com.covenantcode.crm.dto.lead.LeadCreateRequest;
 import com.covenantcode.crm.dto.lead.LeadResponse;
+import com.covenantcode.crm.dto.lead.LeadUpdateRequest;
 import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.entity.enums.LeadStatus;
 import com.covenantcode.crm.service.AuthService;
@@ -132,6 +133,23 @@ public class LeadController {
         LeadCommentResponse response = leadService.addComment(id, request, authorId);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(summary = "Обновить данные лида", description = "Обновляет контактные данные лида. Статус не изменяется!")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Данные успешно обновлены",
+                    content = @Content(schema = @Schema(implementation = LeadResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Некорректные данные запроса или попытка редактировать конвертированного лида"),
+            @ApiResponse(responseCode = "401", description = "Пользователь не аутентифицирован"),
+            @ApiResponse(responseCode = "403", description = "Недостаточно прав (требуется ADMIN или MANAGER)"),
+            @ApiResponse(responseCode = "404", description = "Лид, курс или менеджер не найдены")
+    })
+    public ResponseEntity<LeadResponse> update(
+            @PathVariable @Positive Long id,
+            @Valid @RequestBody LeadUpdateRequest request) {
+        return ResponseEntity.ok(leadService.update(id, request));
     }
 }
 

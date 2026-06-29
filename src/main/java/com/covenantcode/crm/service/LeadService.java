@@ -3,11 +3,10 @@ package com.covenantcode.crm.service;
 
 import com.covenantcode.crm.dto.lead.LeadCommentCreateRequest;
 import com.covenantcode.crm.dto.lead.LeadCommentResponse;
-import com.covenantcode.crm.dto.lead.LeadConvertRequest;
-import com.covenantcode.crm.dto.lead.LeadCommentCreateRequest;
-import com.covenantcode.crm.dto.lead.LeadCommentResponse;
 import com.covenantcode.crm.dto.lead.LeadCreateRequest;
 import com.covenantcode.crm.dto.lead.LeadResponse;
+import com.covenantcode.crm.dto.lead.LeadConvertRequest;
+import com.covenantcode.crm.dto.lead.LeadUpdateRequest;
 import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.entity.enums.LeadStatus;
 import org.springframework.data.domain.Page;
@@ -30,4 +29,6 @@ public interface LeadService {
     LeadCommentResponse addComment(Long leadId, LeadCommentCreateRequest request, Long authorId);
 
     StudentResponse convertToStudent(Long leadId, LeadConvertRequest request);
+
+    LeadResponse update(Long id, LeadUpdateRequest request);
 }

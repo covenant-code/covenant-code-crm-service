@@ -7,16 +7,17 @@ import com.covenantcode.crm.dto.lead.LeadCreateRequest;
 import com.covenantcode.crm.dto.lead.LeadResponse;
 import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.entity.Lead;
-import com.covenantcode.crm.entity.LeadComment;
+import com.covenantcode.crm.dto.lead.LeadUpdateRequest;
+import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.User;
+import com.covenantcode.crm.entity.LeadComment;
+import com.covenantcode.crm.exception.BadRequestException;
 import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.enums.LeadStatus;
 import com.covenantcode.crm.exception.ConflictException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.LeadCommentMapper;
 import com.covenantcode.crm.mapper.LeadMapper;
-import com.covenantcode.crm.repository.*;
-import com.covenantcode.crm.repository.*;
 import com.covenantcode.crm.mapper.StudentMapper;
 import com.covenantcode.crm.repository.*;
 import com.covenantcode.crm.service.LeadService;
@@ -89,7 +90,6 @@ public class LeadServiceImpl implements LeadService {
     ) {
         Specification<Lead> spec = Specification.where(null);
 
-        // --- Используем методы LeadSpecifications ---
         if (StringUtils.hasText(search)) {
             spec = spec.and(LeadSpecifications.searchByText(search));
         }
@@ -153,5 +153,43 @@ public class LeadServiceImpl implements LeadService {
         LeadComment savedComment = leadCommentRepository.save(leadComment);
 
         return leadCommentMapper.toResponse(savedComment);
+    }
+
+    @Transactional
+    @Override
+    public LeadResponse update(Long id, LeadUpdateRequest request) {
+        Lead lead = leadRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lead с id " + id + " не найден"));
+
+        if (lead.getStatus() == LeadStatus.CONVERTED_TO_STUDENT) {
+            throw new BadRequestException("Нельзя редактировать конвертированного лида");
+        }
+
+        if (request.getInterestedCourseId() != null) {
+            Course course = courseRepository.findById(request.getInterestedCourseId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Course с id " + request.getInterestedCourseId() + " не найден"));
+            lead.setInterestedCourse(course);
+        } else {
+            lead.setInterestedCourse(null);
+        }
+
+        if (request.getAssignedManagerId() != null) {
+            User manager = userRepository.findById(request.getAssignedManagerId())
+                    .orElseThrow(() -> new ResourceNotFoundException("User с id " + request.getAssignedManagerId() + " не найден"));
+            lead.setAssignedManager(manager);
+        } else {
+            lead.setAssignedManager(null);
+        }
+
+        lead.setFirstName(request.getFirstName());
+        lead.setLastName(request.getLastName());
+        lead.setPhone(request.getPhone());
+        lead.setEmail(request.getEmail());
+        lead.setSource(request.getSource());
+        lead.setComment(request.getComment());
+
+        Lead updatedLead = leadRepository.save(lead);
+
+        return leadMapper.toResponse(updatedLead);
     }
 }

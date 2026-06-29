@@ -1,14 +1,25 @@
 package com.covenantcode.crm.service.impl;
 
-import com.covenantcode.crm.dto.lead.*;
-import com.covenantcode.crm.dto.lead.*;
+
+import com.covenantcode.crm.dto.lead.LeadCommentCreateRequest;
+import com.covenantcode.crm.dto.lead.LeadCommentResponse;
+import com.covenantcode.crm.dto.lead.LeadCreateRequest;
+import com.covenantcode.crm.dto.lead.LeadResponse;
+import com.covenantcode.crm.dto.lead.CourseShortResponse;
+import com.covenantcode.crm.dto.lead.UserShortResponse;
+import com.covenantcode.crm.dto.lead.LeadUpdateRequest;
+import com.covenantcode.crm.dto.lead.LeadConvertRequest;
+
 import com.covenantcode.crm.dto.student.StudentResponse;
-import com.covenantcode.crm.dto.lead.*;
-import com.covenantcode.crm.entity.*;
+
+import com.covenantcode.crm.entity.User;
+import com.covenantcode.crm.entity.Course;
+import com.covenantcode.crm.entity.Lead;
 import com.covenantcode.crm.entity.enums.LeadStatus;
 import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.LeadComment;
 import com.covenantcode.crm.exception.ConflictException;
+import com.covenantcode.crm.exception.BadRequestException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.LeadCommentMapper;
 import com.covenantcode.crm.mapper.LeadMapper;
@@ -28,6 +39,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.mockito.ArgumentMatchers.any;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -36,6 +48,7 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -302,11 +315,10 @@ class LeadServiceImplTest {
         verifyNoInteractions(leadMapper);
     }
 
-    // --- Тест 1: Без фильтров, возвращает все лиды ---
     @Test
     @DisplayName("Возвращает все лиды постранично без фильтров")
     void getAllWithoutFiltersShouldReturnAllLeadsPaginated() {
-        // Given
+
         Pageable pageable = PageRequest.of(0, 20);
         Lead lead1 = new Lead();
         lead1.setId(1L);
@@ -327,32 +339,28 @@ class LeadServiceImplTest {
         leadResponse2.setId(2L);
         leadResponse2.setFirstName("Lead2");
 
-        // Mocking
         when(leadRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(leadPage);
         when(leadMapper.toResponse(lead1)).thenReturn(leadResponse1);
         when(leadMapper.toResponse(lead2)).thenReturn(leadResponse2);
 
-        // When
         Page<LeadResponse> result = leadService.getAll(
-                null,    // search
-                null,    // status
-                null,    // assignedManagerId
-                null,    // interestedCourseId
+                null,
+                null,
+                null,
+                null,
                 pageable
         );
 
-        // Then
         assertThat(result).isNotNull();
         assertThat(result.getContent()).hasSize(2);
         assertThat(result.getTotalElements()).isEqualTo(2);
         assertThat(result.getTotalPages()).isEqualTo(1);
     }
 
-    // --- Тест 2: С фильтром status=NEW ---
     @Test
     @DisplayName("Фильтрует лиды по статусу NEW, спецификация передаётся в репозиторий")
     void getAllWithStatusFilterShouldApplySpecification() {
-        // Given
+
         LeadStatus status = LeadStatus.NEW;
         Pageable pageable = PageRequest.of(0, 20);
 
@@ -366,29 +374,332 @@ class LeadServiceImplTest {
         LeadResponse leadResponse = new LeadResponse();
         leadResponse.setId(1L);
 
-        // Mocking
         when(leadRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(leadPage);
         when(leadMapper.toResponse(leadWithStatusNew)).thenReturn(leadResponse);
 
-        // When
         Page<LeadResponse> result = leadService.getAll(
-                null,      // search
-                status,    // status=NEW
-                null,      // assignedManagerId
-                null,      // interestedCourseId
+                null,
+                status,
+                null,
+                null,
                 pageable
         );
 
-        // Then
         assertThat(result).isNotNull();
         assertThat(result.getContent()).hasSize(1);
 
-        // Проверка, что спецификация передаётся в репозиторий
         ArgumentCaptor<Specification<Lead>> specCaptor = ArgumentCaptor.forClass(Specification.class);
         verify(leadRepository, times(1)).findAll(specCaptor.capture(), eq(pageable));
 
         Specification<Lead> capturedSpec = specCaptor.getValue();
         assertThat(capturedSpec).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Тест 1: успешное обновление данных лида")
+    void update_Success_ShouldUpdateLead() {
+
+        LeadUpdateRequest updateRequest = new LeadUpdateRequest();
+        updateRequest.setFirstName("Алексей");
+        updateRequest.setLastName("Смирнов");
+        updateRequest.setPhone("+79162222222");
+        updateRequest.setEmail("alexey@mail.ru");
+        updateRequest.setSource("Реклама");
+        updateRequest.setComment("Новый комментарий");
+        updateRequest.setInterestedCourseId(2L);
+        updateRequest.setAssignedManagerId(3L);
+
+        Course updateCourse = new Course();
+        updateCourse.setId(2L);
+        updateCourse.setTitle("Курс английского");
+
+        User updateManager = new User();
+        updateManager.setId(3L);
+        updateManager.setFirstName("Анна");
+        updateManager.setLastName("Кузнецова");
+
+        Lead existingLead = new Lead();
+        existingLead.setId(1L);
+        existingLead.setFirstName("Иван");
+        existingLead.setLastName("Петров");
+        existingLead.setPhone("+79161111111");
+        existingLead.setEmail("ivan@mail.ru");
+        existingLead.setSource("Сайт");
+        existingLead.setStatus(LeadStatus.IN_PROGRESS);
+        existingLead.setComment("Старый комментарий");
+
+        Lead updatedLead = new Lead();
+        updatedLead.setId(1L);
+        updatedLead.setFirstName(updateRequest.getFirstName());
+        updatedLead.setLastName(updateRequest.getLastName());
+        updatedLead.setPhone(updateRequest.getPhone());
+        updatedLead.setEmail(updateRequest.getEmail());
+        updatedLead.setSource(updateRequest.getSource());
+        updatedLead.setComment(updateRequest.getComment());
+        updatedLead.setInterestedCourse(updateCourse);
+        updatedLead.setAssignedManager(updateManager);
+        updatedLead.setStatus(LeadStatus.IN_PROGRESS);
+        updatedLead.setCreatedAt(OffsetDateTime.now());
+        updatedLead.setUpdatedAt(OffsetDateTime.now());
+
+        LeadResponse updatedResponse = new LeadResponse();
+        updatedResponse.setId(1L);
+        updatedResponse.setFirstName(updateRequest.getFirstName());
+        updatedResponse.setLastName(updateRequest.getLastName());
+        updatedResponse.setPhone(updateRequest.getPhone());
+        updatedResponse.setEmail(updateRequest.getEmail());
+        updatedResponse.setSource(updateRequest.getSource());
+        updatedResponse.setComment(updateRequest.getComment());
+        updatedResponse.setStatus("IN_PROGRESS");
+        updatedResponse.setCreatedAt(OffsetDateTime.now().toLocalDateTime());
+        updatedResponse.setUpdatedAt(OffsetDateTime.now().toLocalDateTime());
+
+        CourseShortResponse courseShort = new CourseShortResponse();
+        courseShort.setId(2L);
+        courseShort.setTitle("Курс английского");
+        updatedResponse.setInterestedCourse(courseShort);
+
+        UserShortResponse userShort = new UserShortResponse();
+        userShort.setId(3L);
+        userShort.setFirstName("Анна");
+        userShort.setLastName("Кузнецова");
+        updatedResponse.setAssignedManager(userShort);
+
+        when(leadRepository.findById(1L)).thenReturn(Optional.of(existingLead));
+        when(courseRepository.findById(2L)).thenReturn(Optional.of(updateCourse));
+        when(userRepository.findById(3L)).thenReturn(Optional.of(updateManager));
+        when(leadRepository.save(any(Lead.class))).thenReturn(updatedLead);
+        when(leadMapper.toResponse(any(Lead.class))).thenReturn(updatedResponse);
+
+        LeadResponse response = leadService.update(1L, updateRequest);
+
+        assertThat(response).isNotNull();
+
+        assertThat(response.getId()).isEqualTo(1L);
+        assertThat(response.getFirstName()).isEqualTo("Алексей");
+        assertThat(response.getLastName()).isEqualTo("Смирнов");
+        assertThat(response.getPhone()).isEqualTo("+79162222222");
+        assertThat(response.getEmail()).isEqualTo("alexey@mail.ru");
+        assertThat(response.getSource()).isEqualTo("Реклама");
+        assertThat(response.getComment()).isEqualTo("Новый комментарий");
+        assertThat(response.getStatus()).isEqualTo("IN_PROGRESS");
+        assertThat(response.getInterestedCourse()).isNotNull();
+        assertThat(response.getInterestedCourse().getId()).isEqualTo(2L);
+
+        verify(leadRepository).findById(1L);
+        verify(courseRepository).findById(2L);
+        verify(userRepository).findById(3L);
+        verify(leadRepository).save(any(Lead.class));
+        verify(leadMapper).toResponse(any(Lead.class));
+
+        ArgumentCaptor<Lead> leadCaptor = ArgumentCaptor.forClass(Lead.class);
+        verify(leadRepository).save(leadCaptor.capture());
+        Lead capturedLead = leadCaptor.getValue();
+        assertThat(capturedLead).isNotNull();
+        assertThat(capturedLead.getStatus()).isEqualTo(LeadStatus.IN_PROGRESS);
+    }
+
+    @Test
+    @DisplayName("Тест 2: попытка обновить конвертированного лида → BadRequestException")
+    void update_ConvertedLead_ShouldThrowBadRequestException() {
+
+        LeadUpdateRequest updateRequest = new LeadUpdateRequest();
+        updateRequest.setFirstName("Алексей");
+        updateRequest.setLastName("Смирнов");
+        updateRequest.setPhone("+79162222222");
+        updateRequest.setEmail("alexey@mail.ru");
+        updateRequest.setSource("Реклама");
+        updateRequest.setComment("Новый комментарий");
+        updateRequest.setInterestedCourseId(2L);
+        updateRequest.setAssignedManagerId(3L);
+
+        Lead existingLead = new Lead();
+        existingLead.setId(1L);
+        existingLead.setFirstName("Иван");
+        existingLead.setLastName("Петров");
+        existingLead.setPhone("+79161111111");
+        existingLead.setEmail("ivan@mail.ru");
+        existingLead.setSource("Сайт");
+        existingLead.setStatus(LeadStatus.CONVERTED_TO_STUDENT);
+        existingLead.setComment("Конвертирован");
+
+        when(leadRepository.findById(1L)).thenReturn(Optional.of(existingLead));
+
+        assertThatThrownBy(() -> leadService.update(1L, updateRequest))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessage("Нельзя редактировать конвертированного лида");
+
+        verify(leadRepository).findById(1L);
+        verify(courseRepository, never()).findById(any());
+        verify(userRepository, never()).findById(any());
+        verify(leadRepository, never()).save(any(Lead.class));
+        verify(leadMapper, never()).toResponse(any(Lead.class));
+    }
+
+    @Test
+    @DisplayName("Тест 3: лид не найден → ResourceNotFoundException")
+    void update_LeadNotFound_ShouldThrowResourceNotFoundException() {
+
+        LeadUpdateRequest updateRequest = new LeadUpdateRequest();
+        updateRequest.setFirstName("Алексей");
+        updateRequest.setPhone("+79162222222");
+
+        when(leadRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> leadService.update(99L, updateRequest))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Lead с id 99 не найден");
+
+        verify(leadRepository).findById(99L);
+        verify(courseRepository, never()).findById(any());
+        verify(userRepository, never()).findById(any());
+        verify(leadRepository, never()).save(any(Lead.class));
+        verify(leadMapper, never()).toResponse(any(Lead.class));
+    }
+
+    @Test
+    @DisplayName("Тест 4: курс не найден → ResourceNotFoundException")
+    void update_CourseNotFound_ShouldThrowResourceNotFoundException() {
+
+        LeadUpdateRequest updateRequest = new LeadUpdateRequest();
+        updateRequest.setFirstName("Алексей");
+        updateRequest.setLastName("Смирнов");
+        updateRequest.setPhone("+79162222222");
+        updateRequest.setEmail("alexey@mail.ru");
+        updateRequest.setSource("Реклама");
+        updateRequest.setComment("Новый комментарий");
+        updateRequest.setInterestedCourseId(2L);
+        updateRequest.setAssignedManagerId(3L);
+
+        Lead existingLead = new Lead();
+        existingLead.setId(1L);
+        existingLead.setFirstName("Иван");
+        existingLead.setLastName("Петров");
+        existingLead.setPhone("+79161111111");
+        existingLead.setEmail("ivan@mail.ru");
+        existingLead.setSource("Сайт");
+        existingLead.setStatus(LeadStatus.IN_PROGRESS);
+        existingLead.setComment("Старый комментарий");
+
+        when(leadRepository.findById(1L)).thenReturn(Optional.of(existingLead));
+        when(courseRepository.findById(2L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> leadService.update(1L, updateRequest))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Course с id 2 не найден");
+
+        verify(leadRepository).findById(1L);
+        verify(courseRepository).findById(2L);
+        verify(userRepository, never()).findById(any());
+        verify(leadRepository, never()).save(any(Lead.class));
+        verify(leadMapper, never()).toResponse(any(Lead.class));
+    }
+
+    @Test
+    @DisplayName("Тест 5: менеджер не найден → ResourceNotFoundException")
+    void update_ManagerNotFound_ShouldThrowResourceNotFoundException() {
+
+        LeadUpdateRequest updateRequest = new LeadUpdateRequest();
+        updateRequest.setFirstName("Алексей");
+        updateRequest.setLastName("Смирнов");
+        updateRequest.setPhone("+79162222222");
+        updateRequest.setEmail("alexey@mail.ru");
+        updateRequest.setSource("Реклама");
+        updateRequest.setComment("Новый комментарий");
+        updateRequest.setInterestedCourseId(2L);
+        updateRequest.setAssignedManagerId(3L);
+
+        Course updateCourse = new Course();
+        updateCourse.setId(2L);
+        updateCourse.setTitle("Курс английского");
+
+        Lead existingLead = new Lead();
+        existingLead.setId(1L);
+        existingLead.setFirstName("Иван");
+        existingLead.setLastName("Петров");
+        existingLead.setPhone("+79161111111");
+        existingLead.setEmail("ivan@mail.ru");
+        existingLead.setSource("Сайт");
+        existingLead.setStatus(LeadStatus.IN_PROGRESS);
+        existingLead.setComment("Старый комментарий");
+
+        when(leadRepository.findById(1L)).thenReturn(Optional.of(existingLead));
+        when(courseRepository.findById(2L)).thenReturn(Optional.of(updateCourse));
+        when(userRepository.findById(3L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> leadService.update(1L, updateRequest))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("User с id 3 не найден");
+
+        verify(leadRepository).findById(1L);
+        verify(courseRepository).findById(2L);
+        verify(userRepository).findById(3L);
+        verify(leadRepository, never()).save(any(Lead.class));
+        verify(leadMapper, never()).toResponse(any(Lead.class));
+    }
+
+    @Test
+    @DisplayName("Тест 6: сброс курса и менеджера при null")
+    void update_NullCourseAndManager_ShouldClearRelations() {
+
+        LeadUpdateRequest updateRequest = new LeadUpdateRequest();
+        updateRequest.setFirstName("Алексей");
+        updateRequest.setLastName("Смирнов");
+        updateRequest.setPhone("+79162222222");
+        updateRequest.setEmail("alexey@mail.ru");
+        updateRequest.setSource("Реклама");
+        updateRequest.setComment("Новый комментарий");
+        updateRequest.setInterestedCourseId(null);
+        updateRequest.setAssignedManagerId(null);
+
+        Lead existingLead = new Lead();
+        existingLead.setId(1L);
+        existingLead.setFirstName("Иван");
+        existingLead.setLastName("Петров");
+        existingLead.setPhone("+79161111111");
+        existingLead.setEmail("ivan@mail.ru");
+        existingLead.setSource("Сайт");
+        existingLead.setStatus(LeadStatus.IN_PROGRESS);
+        existingLead.setComment("Старый комментарий");
+
+        Lead clearedLead = new Lead();
+        clearedLead.setId(1L);
+        clearedLead.setFirstName(updateRequest.getFirstName());
+        clearedLead.setLastName(updateRequest.getLastName());
+        clearedLead.setPhone(updateRequest.getPhone());
+        clearedLead.setEmail(updateRequest.getEmail());
+        clearedLead.setSource(updateRequest.getSource());
+        clearedLead.setComment(updateRequest.getComment());
+        clearedLead.setInterestedCourse(null);
+        clearedLead.setAssignedManager(null);
+        clearedLead.setStatus(LeadStatus.IN_PROGRESS);
+
+        LeadResponse clearedResponse = new LeadResponse();
+        clearedResponse.setId(1L);
+        clearedResponse.setFirstName(updateRequest.getFirstName());
+        clearedResponse.setPhone(updateRequest.getPhone());
+        clearedResponse.setStatus("IN_PROGRESS");
+        clearedResponse.setInterestedCourse(null);
+        clearedResponse.setAssignedManager(null);
+
+        when(leadRepository.findById(1L)).thenReturn(Optional.of(existingLead));
+        when(leadRepository.save(any(Lead.class))).thenReturn(clearedLead);
+        when(leadMapper.toResponse(any(Lead.class))).thenReturn(clearedResponse);
+
+        LeadResponse response = leadService.update(1L, updateRequest);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getInterestedCourse()).isNull();
+        assertThat(response.getAssignedManager()).isNull();
+
+        ArgumentCaptor<Lead> leadCaptor = ArgumentCaptor.forClass(Lead.class);
+        verify(leadRepository).save(leadCaptor.capture());
+        Lead capturedLead = leadCaptor.getValue();
+        assertThat(capturedLead.getInterestedCourse()).isNull();
+        assertThat(capturedLead.getAssignedManager()).isNull();
+
+        verify(courseRepository, never()).findById(any());
+        verify(userRepository, never()).findById(any());
     }
 
     @Test
