@@ -5,17 +5,20 @@ import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.dto.student.StudentUpdateRequest;
 import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.User;
+import com.covenantcode.crm.entity.enums.RoleName;
 import com.covenantcode.crm.exception.ConflictException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.StudentMapper;
 import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.StudentSpecifications;
+import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.service.StudentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -31,13 +34,33 @@ public class StudentServiceImpl implements StudentService {
     private final StudentRepository studentRepository;
     private final StudentMapper studentMapper;
     private final UserRepository userRepository;
+    private final StudyGroupRepository studyGroupRepository;
 
     @Override
     @Transactional(readOnly = true)
-    public StudentResponse getById(Long id) {
-        return studentRepository.findById(id)
-                .map(studentMapper::toResponse)
-                .orElseThrow(() -> new ResourceNotFoundException("Студент не найден с ID: " + id));
+    public StudentResponse getById(Long id, User currentUser) {
+
+        Student student = studentRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Student с id " + id + " не найден"));
+
+        RoleName roleName = currentUser.getRole().getName();
+
+        boolean isStaff = roleName == RoleName.ADMIN || roleName == RoleName.MANAGER;
+
+        boolean isOwner = student.getUser() != null &&
+                student.getUser().getId().equals(currentUser.getId());
+
+        if (isStaff || isOwner) {
+            return studentMapper.toResponse(student);
+        }
+
+        if (roleName == RoleName.TEACHER) {
+            if (studyGroupRepository.existsByTeacherAndStudentsContaining(currentUser, student)) {
+                return studentMapper.toResponse(student);
+            }
+        }
+
+        throw new AccessDeniedException("У вас нет прав для просмотра данных этого студента");
     }
 
     @Override

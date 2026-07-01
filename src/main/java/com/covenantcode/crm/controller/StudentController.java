@@ -3,6 +3,7 @@ package com.covenantcode.crm.controller;
 import com.covenantcode.crm.dto.student.StudentCreateRequest;
 import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.dto.student.StudentUpdateRequest;
+import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.service.StudentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -18,6 +19,7 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -89,5 +91,20 @@ public class StudentController {
             @Valid @RequestBody StudentUpdateRequest request) {
         StudentResponse response = studentService.update(id, request);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Получить студента по ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Студент найден"),
+            @ApiResponse(responseCode = "401", description = "Не авторизован"),
+            @ApiResponse(responseCode = "403", description = "Доступ запрещён"),
+            @ApiResponse(responseCode = "404", description = "Студент не найден")
+    })
+    public ResponseEntity<StudentResponse> getById(
+            @PathVariable Long id,
+            @AuthenticationPrincipal User currentUser
+    ) {
+        return ResponseEntity.ok(studentService.getById(id, currentUser));
     }
 }

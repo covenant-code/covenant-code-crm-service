@@ -3,13 +3,17 @@ package com.covenantcode.crm.service.impl;
 import com.covenantcode.crm.dto.student.StudentCreateRequest;
 import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.dto.student.StudentUpdateRequest;
+import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.User;
+import com.covenantcode.crm.entity.enums.RoleName;
 import com.covenantcode.crm.exception.ConflictException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.StudentMapper;
 import com.covenantcode.crm.repository.StudentRepository;
+import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,19 +21,32 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.eq;
+
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.assertj.core.api.Assertions.assertThat;
 
 
@@ -45,8 +62,105 @@ class StudentServiceImplTest {
     @Mock
     private StudentMapper studentMapper;
 
+    @Mock
+    private StudyGroupRepository studyGroupRepository;
+
     @InjectMocks
     private StudentServiceImpl studentService;
+
+    private User adminUser;
+    private User teacherUser;
+    private User studentOwnerUser;
+    private User anotherStudentUser;
+    private Student student;
+    private StudentResponse studentResponse;
+
+    @BeforeEach
+    void setUp() {
+
+        Role adminRole = Role.builder().id(1L).name(RoleName.ADMIN).build();
+        Role teacherRole = Role.builder().id(2L).name(RoleName.TEACHER).build();
+        Role studentRole = Role.builder().id(3L).name(RoleName.STUDENT).build();
+
+        adminUser = User.builder().id(10L).role(adminRole).build();
+        teacherUser = User.builder().id(20L).role(teacherRole).build();
+        studentOwnerUser = User.builder().id(30L).role(studentRole).build();
+        anotherStudentUser = User.builder().id(40L).role(studentRole).build();
+
+        student = Student.builder()
+                .id(1L)
+                .firstName("Ivan")
+                .lastName("Ivanov")
+                .user(studentOwnerUser)
+                .build();
+
+        studentResponse = StudentResponse.builder()
+                .id(1L)
+                .firstName("Ivan")
+                .userId(30L)
+                .build();
+    }
+
+    @Test
+    void getById_asAdmin_shouldReturnStudent() {
+        when(studentRepository.findById(1L)).thenReturn(Optional.of(student));
+        when(studentMapper.toResponse(student)).thenReturn(studentResponse);
+
+        StudentResponse result = studentService.getById(1L, adminUser);
+
+        assertNotNull(result);
+        assertEquals(studentResponse.getId(), result.getId());
+        verify(studentMapper).toResponse(student);
+        verify(studyGroupRepository, never()).existsByTeacherAndStudentsContaining(any(), any());
+    }
+
+    @Test
+    void getById_asTeacher_whenAllowed_shouldReturnStudent() {
+        when(studentRepository.findById(1L)).thenReturn(Optional.of(student));
+        when(studyGroupRepository.existsByTeacherAndStudentsContaining(teacherUser, student)).thenReturn(true);
+        when(studentMapper.toResponse(student)).thenReturn(studentResponse);
+
+        StudentResponse result = studentService.getById(1L, teacherUser);
+
+        assertNotNull(result);
+        verify(studyGroupRepository).existsByTeacherAndStudentsContaining(teacherUser, student);
+    }
+
+    @Test
+    void getById_asTeacher_whenNotAllowed_shouldThrowAccessDenied() {
+        when(studentRepository.findById(1L)).thenReturn(Optional.of(student));
+        when(studyGroupRepository.existsByTeacherAndStudentsContaining(teacherUser, student)).thenReturn(false);
+
+        assertThrows(AccessDeniedException.class, () -> studentService.getById(1L, teacherUser));
+    }
+
+    @Test
+    void getById_asStudentOwner_shouldReturnStudent() {
+        when(studentRepository.findById(1L)).thenReturn(Optional.of(student));
+        when(studentMapper.toResponse(student)).thenReturn(studentResponse);
+
+        StudentResponse result = studentService.getById(1L, studentOwnerUser);
+
+        assertNotNull(result);
+        verify(studentMapper).toResponse(student);
+    }
+
+    @Test
+    void getById_asAnotherStudent_shouldThrowAccessDenied() {
+        when(studentRepository.findById(1L)).thenReturn(Optional.of(student));
+
+        assertThrows(AccessDeniedException.class, () -> studentService.getById(1L, anotherStudentUser));
+        verify(studentMapper, never()).toResponse(any());
+    }
+
+    @Test
+    void getById_whenNotFound_shouldThrowResourceNotFoundException() {
+        when(studentRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> studentService.getById(99L, adminUser));
+        verify(studentMapper, never()).toResponse(any());
+    }
+
 
     @Test
     @DisplayName("Тест 1: Успешное создание студента без привязки к пользователю")
