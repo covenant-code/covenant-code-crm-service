@@ -6,33 +6,43 @@ import com.covenantcode.crm.dto.student.StudentUpdateRequest;
 import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.User;
+import com.covenantcode.crm.entity.StudyGroup;
+import com.covenantcode.crm.entity.Course;
+import com.covenantcode.crm.entity.enums.CourseStatus;
+import com.covenantcode.crm.entity.enums.GroupStatus;
 import com.covenantcode.crm.entity.enums.RoleName;
-import com.covenantcode.crm.repository.RoleRepository;
 import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.UserRepository;
+import com.covenantcode.crm.repository.StudyGroupRepository;
+import com.covenantcode.crm.repository.RoleRepository;
+import com.covenantcode.crm.repository.CourseRepository;
+import com.covenantcode.crm.security.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
-
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.hasSize;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.not;
-import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -40,6 +50,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+
+@Transactional
 class StudentControllerIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
@@ -54,12 +66,162 @@ class StudentControllerIntegrationTest extends BaseIntegrationTest {
     private UserRepository userRepository;
 
     @Autowired
+    private CourseRepository courseRepository;
+
+    @Autowired
+    private StudyGroupRepository studyGroupRepository;
+
+    @Autowired
     private RoleRepository roleRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private JwtService jwtService;
+
+    private User adminUser;
+    private User teacherUser;
+    private User studentUser;
+    private User otherStudentUser;
+
+    private Student student;
+    private Course course;
+    private StudyGroup studyGroup;
+
+    private String adminToken;
+    private String teacherToken;
+    private String studentToken;
+
+    @BeforeEach
+    void setUp() {
+
+        Role adminRole = getOrCreateRole(RoleName.ADMIN);
+        Role teacherRole = getOrCreateRole(RoleName.TEACHER);
+        Role studentRole = getOrCreateRole(RoleName.STUDENT);
+
+        adminUser = userRepository.save(User.builder()
+                .firstName("Admin44").lastName("User33").email("adminwwwest@test.ru")
+                .password(passwordEncoder.encode("password123")).role(adminRole).enabled(true).build());
+
+        teacherUser = userRepository.save(User.builder()
+                .firstName("Teacher").lastName("User").email("teacher@test.ru")
+                .password(passwordEncoder.encode("password123")).role(teacherRole).enabled(true).build());
+
+        studentUser = userRepository.save(User.builder()
+                .firstName("Student").lastName("One").email("student1@test.ru")
+                .password(passwordEncoder.encode("password123"))
+                .role(studentRole)
+                .enabled(true)
+                .build());
+
+        otherStudentUser = userRepository.save(User.builder()
+                .firstName("Other").lastName("Student").email("other@test.ru")
+                .password(passwordEncoder.encode("password123")).role(studentRole).enabled(true).build());
+
+        course = courseRepository.save(Course.builder()
+                .title("Java Developer")
+                .description("Description")
+                .price(new BigDecimal("10000.00"))
+                .durationInWeeks(12)
+                .status(CourseStatus.ACTIVE)
+                .build());
+
+        student = studentRepository.save(Student.builder()
+                .firstName("Иван").lastName("Иванов").email("ivan@test.ru")
+                .user(studentUser)
+                .build());
+
+        studyGroup = studyGroupRepository.save(StudyGroup.builder()
+                .name("Java Backend 101")
+                .course(course)
+                .teacher(teacherUser)
+                .startDate(LocalDate.now().plusDays(10))
+                .status(GroupStatus.ACTIVE)
+                .students(Set.of(student))
+                .build());
+
+        adminToken = jwtService.generateToken(adminUser);
+        teacherToken = jwtService.generateToken(teacherUser);
+        studentToken = jwtService.generateToken(studentUser);
+    }
+
+    private Role getOrCreateRole(RoleName roleName) {
+        return roleRepository.findByName(roleName)
+                .orElseGet(() -> roleRepository.save(Role.builder().name(roleName).build()));
+    }
 
     @AfterEach
     void tearDown() {
+        studyGroupRepository.deleteAll();
         studentRepository.deleteAll();
         userRepository.deleteAll();
+        courseRepository.deleteAll();
+    }
+
+    @Test
+    @DisplayName("Тест 1: ADMIN получает любого студента (200)")
+    void adminGetsAnyStudent_shouldReturn200() throws Exception {
+
+        mockMvc.perform(get("/api/v1/students/{id}", student.getId())
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(student.getId()));
+    }
+
+    @Test
+    @DisplayName("Тест 2: TEACHER получает студента из своей группы (200)")
+    void teacherGetsStudentFromHisGroup_shouldReturn200() throws Exception {
+
+        mockMvc.perform(get("/api/v1/students/{id}", student.getId())
+                        .header("Authorization", "Bearer " + teacherToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("Тест 3: TEACHER получает студента из чужой группы (403)")
+    void teacherGetsStudentFromAnotherGroup_shouldReturn403() throws Exception {
+
+        User otherTeacher = userRepository.save(User.builder()
+                .firstName("Other")
+                .lastName("Teacher")
+                .email("other-teacher@test.ru")
+                .password(passwordEncoder.encode("password123"))
+                .role(getOrCreateRole(RoleName.TEACHER))
+                .enabled(true).build());
+        String otherTeacherToken = jwtService.generateToken(otherTeacher);
+
+        mockMvc.perform(get("/api/v1/students/{id}", student.getId())
+                        .header("Authorization", "Bearer " + otherTeacherToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Тест 4: STUDENT получает свой профиль (200)")
+    void studentGetsOwnProfile_shouldReturn200() throws Exception {
+        mockMvc.perform(get("/api/v1/students/{id}", student.getId())
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(student.getId()));
+    }
+
+    @Test
+    @DisplayName("Тест 5: STUDENT получает чужой профиль (403)")
+    void studentGetsAnotherProfile_shouldReturn403() throws Exception {
+        String otherStudentToken = jwtService.generateToken(otherStudentUser);
+
+        mockMvc.perform(get("/api/v1/students/{id}", student.getId())
+                        .header("Authorization", "Bearer " + otherStudentToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("Тест 6: студент не найден (404)")
+    void studentNotFound_shouldReturn404() throws Exception {
+        mockMvc.perform(get("/api/v1/students/{id}", 9999L)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.type").value("resource-not-found"));
     }
 
     @Test
@@ -67,10 +229,15 @@ class StudentControllerIntegrationTest extends BaseIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     void create_ShouldReturnCreated_WhenValidRequestNoUserId() throws Exception {
 
+        studyGroupRepository.deleteAll();
+        studentRepository.deleteAll();
+
+        String email = "ivan-" + System.currentTimeMillis() + "@test.com";
+
         StudentCreateRequest request = StudentCreateRequest.builder()
                 .firstName("Иван")
                 .lastName("Иванов")
-                .email("ivan@test.com")
+                .email(email)
                 .phone("123456789")
                 .birthDate(LocalDate.of(2000, 1, 1))
                 .userId(null)
@@ -79,12 +246,24 @@ class StudentControllerIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(post("/api/v1/students")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id", notNullValue()))
-                .andExpect(jsonPath("$.userId", is(nullValue())))
-                .andExpect(jsonPath("$.firstName", is("Иван")));
 
-        assertThat(studentRepository.findAll()).hasSize(1);
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.firstName").value("Иван"))
+                .andExpect(jsonPath("$.lastName").value("Иванов"))
+                .andExpect(jsonPath("$.email").value(email));
+
+        List<Student> students = studentRepository.findAll();
+
+        assertThat(students).hasSize(1);
+
+        Student savedStudent = students.getFirst();
+
+        assertThat(savedStudent.getFirstName()).isEqualTo("Иван");
+        assertThat(savedStudent.getLastName()).isEqualTo("Иванов");
+        assertThat(savedStudent.getEmail()).isEqualTo(email);
+        assertThat(savedStudent.getPhone()).isEqualTo("123456789");
+        assertThat(savedStudent.getBirthDate()).isEqualTo(LocalDate.of(2000, 1, 1));
+        assertThat(savedStudent.getUser()).isNull();
     }
 
     @Test
@@ -159,10 +338,17 @@ class StudentControllerIntegrationTest extends BaseIntegrationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isForbidden());
     }
+
     @Test
     @DisplayName("GET /api/v1/students — список всех студентов (200)")
     @WithMockUser(roles = "MANAGER")
     void getAllStudents_WithoutFilters_ShouldReturnAllStudents() throws Exception {
+
+        studyGroupRepository.deleteAll();
+        studentRepository.deleteAll();
+        userRepository.deleteAll();
+        courseRepository.deleteAll();
+
         Student student1 = Student.builder()
                 .firstName("Алиса")
                 .lastName("Смирнова")
@@ -264,7 +450,7 @@ class StudentControllerIntegrationTest extends BaseIntegrationTest {
                         student2.getId().intValue(),
                         student4.getId().intValue()
                 )))
-                .andExpect(jsonPath("$.content[*].lastName", not(containsString("Петрова"))));
+                .andExpect(jsonPath("$.content[*].lastName", Matchers.not(containsString("Петрова"))));
     }
 
     @Test
@@ -309,7 +495,7 @@ class StudentControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.content", hasSize(2)))
                 .andExpect(jsonPath("$.content[*].phone", containsInAnyOrder("+79161234567", "+79169998877")))
                 .andExpect(jsonPath("$.content[*].firstName", containsInAnyOrder("Алиса", "Екатерина")))
-                .andExpect(jsonPath("$.content[*].phone", not(containsString("+79261112233"))));
+                .andExpect(jsonPath("$.content[*].phone", Matchers.not(containsString("+79261112233"))));
     }
 
     @Test
