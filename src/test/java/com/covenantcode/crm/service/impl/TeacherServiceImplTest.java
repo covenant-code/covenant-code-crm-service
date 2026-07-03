@@ -1,10 +1,13 @@
 package com.covenantcode.crm.service.impl;
 
+import com.covenantcode.crm.dto.teacher.TeacherCreateRequest;
 import com.covenantcode.crm.dto.teacher.TeacherResponse;
 import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.RoleName;
+import com.covenantcode.crm.exception.ConflictException;
 import com.covenantcode.crm.mapper.TeacherMapper;
+import com.covenantcode.crm.repository.RoleRepository;
 import com.covenantcode.crm.repository.UserRepository;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
@@ -27,14 +30,17 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
-
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 
+import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -57,9 +63,17 @@ public class TeacherServiceImplTest {
     @Captor
     private ArgumentCaptor<Specification<User>> specCaptor;
 
+    @Mock
+    private RoleRepository roleRepository;
+
+    @Mock
+    private PasswordEncoder passwordEncoder;
+
     private User testUser;
     private TeacherResponse testResponse;
     private Pageable defaultPageable;
+    private TeacherCreateRequest request;
+
 
     @BeforeEach
     void setUp() {
@@ -80,6 +94,14 @@ public class TeacherServiceImplTest {
                 .role(teacherRole)
                 .createdAt(now)
                 .updatedAt(now)
+                .build();
+
+        request = TeacherCreateRequest.builder()
+                .firstName("Иван")
+                .lastName("Петров")
+                .email("ivan.petrov@example.com")
+                .password("secure1234")
+                .phone("+79161234567")
                 .build();
 
         testResponse = TeacherResponse.builder()
@@ -262,5 +284,47 @@ public class TeacherServiceImplTest {
 
         verify(cb).or(firstNameLike, lastNameLike, emailLike);
         verify(cb).and(rolePredicate, textPredicate);
+    }
+
+    @Test
+    @DisplayName("create — успешное создание преподавателя")
+    void create_success_returnsTeacherResponse() {
+        when(userRepository.existsByEmail(request.getEmail())).thenReturn(false);
+        when(roleRepository.findByName(RoleName.TEACHER)).thenReturn(Optional.of(testUser.getRole()));
+        when(passwordEncoder.encode(request.getPassword())).thenReturn("encodedPassword");
+        when(userRepository.saveAndFlush(any(User.class))).thenReturn(testUser);
+        when(teacherMapper.toResponse(testUser)).thenReturn(testResponse);
+
+        TeacherResponse result = teacherService.create(request);
+
+        assertThat(result).isEqualTo(testResponse);
+        verify(passwordEncoder).encode(request.getPassword());
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(userCaptor.capture());
+        User capturedUser = userCaptor.getValue();
+
+        assertThat(capturedUser.getFirstName()).isEqualTo(request.getFirstName());
+        assertThat(capturedUser.getLastName()).isEqualTo(request.getLastName());
+        assertThat(capturedUser.getEmail()).isEqualTo(request.getEmail());
+        assertThat(capturedUser.getPhone()).isEqualTo(request.getPhone());
+        assertThat(capturedUser.getPassword()).isEqualTo("encodedPassword");
+        assertThat(capturedUser.isEnabled()).isTrue();
+        assertThat(capturedUser.getRole()).isEqualTo(testUser.getRole());
+    }
+
+    @Test
+    @DisplayName("create — выбрасывает ConflictException при уже существующем email")
+    void create_throwsConflictException_whenEmailExists() {
+        when(userRepository.existsByEmail(request.getEmail())).thenReturn(true);
+
+        assertThatThrownBy(() -> teacherService.create(request))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("Пользователь с email " + request.getEmail() + " уже существует");
+
+        verify(roleRepository, never()).findByName(any());
+        verify(passwordEncoder, never()).encode(any());
+        verify(userRepository, never()).saveAndFlush(any());
+        verify(teacherMapper, never()).toResponse(any());
     }
 }

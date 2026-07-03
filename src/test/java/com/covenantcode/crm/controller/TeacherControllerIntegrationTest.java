@@ -1,5 +1,6 @@
 package com.covenantcode.crm.controller;
 
+import com.covenantcode.crm.dto.teacher.TeacherCreateRequest;
 import com.covenantcode.crm.BaseIntegrationTest;
 import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.User;
@@ -17,16 +18,18 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.List;
 
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -58,16 +61,12 @@ class TeacherControllerIntegrationTest extends BaseIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        userRepository.deleteAll();
-        roleRepository.deleteAll();
+        userRepository.deleteAllInBatch();
 
-        Role adminRole = Role.builder()
-                .name(RoleName.ADMIN)
-                .build();
-        Role teacherRole = Role.builder()
-                .name(RoleName.TEACHER)
-                .build();
-        roleRepository.saveAll(List.of(adminRole, teacherRole));
+        Role adminRole = roleRepository.findByName(RoleName.ADMIN)
+                .orElseGet(() -> roleRepository.save(Role.builder().name(RoleName.ADMIN).build()));
+        Role teacherRole = roleRepository.findByName(RoleName.TEACHER)
+                .orElseGet(() -> roleRepository.save(Role.builder().name(RoleName.TEACHER).build()));
 
         User admin = User.builder()
                 .firstName("Admin")
@@ -183,5 +182,103 @@ class TeacherControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.type").value("forbidden"))
                 .andExpect(jsonPath("$.status").value(403));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/teachers — 201 Created, преподаватель сохранён")
+    @Transactional
+    void createTeacher_shouldReturn201AndSaveTeacher() throws Exception {
+        String uniqueEmail = "new.teacher." + System.currentTimeMillis() + "@school.ru";
+
+        TeacherCreateRequest request = TeacherCreateRequest.builder()
+                .firstName("Пётр")
+                .lastName("Сидоров")
+                .email(uniqueEmail)
+                .password("securePass123")
+                .phone("+79161234599")
+                .build();
+
+        mockMvc.perform(post("/api/v1/teachers")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.email").value(uniqueEmail))
+                .andExpect(jsonPath("$.firstName").value("Пётр"))
+                .andExpect(jsonPath("$.lastName").value("Сидоров"))
+                .andExpect(jsonPath("$.phone").value("+79161234599"))
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.createdAt").exists());
+
+        User saved = userRepository.findByEmail(uniqueEmail).orElseThrow();
+        assertThat(saved.getFirstName()).isEqualTo("Пётр");
+        assertThat(saved.getRole().getName()).isEqualTo(RoleName.TEACHER);
+        assertThat(saved.getPassword()).isNotEqualTo("securePass123");
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/teachers — 409 Conflict при повторном email")
+    void createTeacher_shouldReturn409_whenEmailDuplicate() throws Exception {
+        TeacherCreateRequest request = TeacherCreateRequest.builder()
+                .firstName("Дубликат")
+                .lastName("Иванов")
+                .email(testTeacher.getEmail())
+                .password("anotherPass123")
+                .phone("+79161234588")
+                .build();
+
+        mockMvc.perform(post("/api/v1/teachers")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.type").value("conflict"))
+                .andExpect(jsonPath("$.detail").value("Пользователь с email " + testTeacher.getEmail() + " уже существует"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/teachers — 403 Forbidden для пользователя без роли ADMIN")
+    void createTeacher_shouldReturn403_whenNotAdmin() throws Exception {
+        String teacherToken = jwtService.generateToken(testTeacher);
+
+        TeacherCreateRequest request = TeacherCreateRequest.builder()
+                .firstName("Нелегальный")
+                .lastName("Учитель")
+                .email("illegal@school.ru")
+                .password("somePass123")
+                .build();
+
+        mockMvc.perform(post("/api/v1/teachers")
+                        .header("Authorization", "Bearer " + teacherToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.type").value("forbidden"))
+                .andExpect(jsonPath("$.status").value(403));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/teachers — 400 Bad Request при невалидных данных")
+    void createTeacher_shouldReturn400_whenValidationFails() throws Exception {
+        TeacherCreateRequest invalidRequest = TeacherCreateRequest.builder()
+                .firstName("")
+                .lastName("Тестов")
+                .email("not-an-email")
+                .password("short")
+                .phone("+79161234567")
+                .build();
+
+        mockMvc.perform(post("/api/v1/teachers")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalidRequest)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.type").value("validation-error"))
+                .andExpect(jsonPath("$.errors").isArray())
+                .andExpect(jsonPath("$.errors.length()").value(3))
+                .andExpect(jsonPath("$.errors[*].field").value(hasItem("firstName")))
+                .andExpect(jsonPath("$.errors[*].field").value(hasItem("email")))
+                .andExpect(jsonPath("$.errors[*].field").value(hasItem("password")));
     }
 }
