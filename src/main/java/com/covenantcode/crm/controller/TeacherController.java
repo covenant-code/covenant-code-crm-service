@@ -15,7 +15,9 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -57,5 +59,20 @@ public class TeacherController {
     public ResponseEntity<TeacherResponse> create(@Valid @RequestBody TeacherCreateRequest request) {
         TeacherResponse response = teacherService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    @Operation(summary = "Удалить преподавателя")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Преподаватель удалён"),
+            @ApiResponse(responseCode = "404", description = "Преподаватель не найден"),
+            @ApiResponse(responseCode = "409", description = "Невозможно удалить: есть группы"),
+            @ApiResponse(responseCode = "401", description = "Не авторизован"),
+            @ApiResponse(responseCode = "403", description = "Доступ запрещён (только ADMIN)")
+    })
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        teacherService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

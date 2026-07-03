@@ -10,4 +10,6 @@ public interface TeacherService {
     Page<TeacherResponse> getAll(String search, Pageable pageable);
 
     TeacherResponse create(TeacherCreateRequest request);
+
+    void delete(Long id);
 }

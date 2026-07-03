@@ -6,8 +6,10 @@ import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.RoleName;
 import com.covenantcode.crm.exception.ConflictException;
+import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.TeacherMapper;
 import com.covenantcode.crm.repository.RoleRepository;
+import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
@@ -38,6 +40,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -68,6 +71,9 @@ public class TeacherServiceImplTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private StudyGroupRepository studyGroupRepository;
 
     private User testUser;
     private TeacherResponse testResponse;
@@ -326,5 +332,51 @@ public class TeacherServiceImplTest {
         verify(passwordEncoder, never()).encode(any());
         verify(userRepository, never()).saveAndFlush(any());
         verify(teacherMapper, never()).toResponse(any());
+    }
+
+    @Test
+    @DisplayName("delete — успешное удаление, userRepository.delete вызван")
+    void deleteSuccess_shouldCallRepositoryDelete() {
+        Long teacherId = testUser.getId();
+        when(userRepository.findById(teacherId)).thenReturn(Optional.of(testUser));
+        when(studyGroupRepository.countByTeacherId(teacherId)).thenReturn(0L);
+
+        teacherService.delete(teacherId);
+
+        verify(studyGroupRepository, times(1)).countByTeacherId(teacherId);
+        verify(userRepository, times(1)).delete(testUser);
+    }
+
+    @Test
+    @DisplayName("delete — преподаватель не найден, выбрасывается ResourceNotFoundException")
+    void delete_teacherNotFound_shouldThrowResourceNotFoundException() {
+        Long nonExistentId = 999L;
+        when(userRepository.findById(nonExistentId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> teacherService.delete(nonExistentId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("Преподаватель с id " + nonExistentId + " не найден");
+
+        verify(studyGroupRepository, never()).countByTeacherId(anyLong());
+        verify(userRepository, never()).delete(any(User.class));
+    }
+
+    @Test
+    @DisplayName("delete — у преподавателя есть группы, выбрасывается ConflictException")
+    void delete_teacherHasGroups_shouldThrowConflictException() {
+        Long teacherId = testUser.getId();
+        long groupCount = 3L;
+        when(userRepository.findById(teacherId)).thenReturn(Optional.of(testUser));
+        when(studyGroupRepository.countByTeacherId(teacherId)).thenReturn(groupCount);
+
+        assertThatThrownBy(() -> teacherService.delete(teacherId))
+                .isInstanceOf(ConflictException.class)
+                .hasMessage(String.format(
+                        "Невозможно удалить преподавателя: у него %d групп(ы). Сначала переназначьте группы.",
+                        groupCount
+                ));
+
+        verify(studyGroupRepository, times(1)).countByTeacherId(teacherId);
+        verify(userRepository, never()).delete(any(User.class));
     }
 }

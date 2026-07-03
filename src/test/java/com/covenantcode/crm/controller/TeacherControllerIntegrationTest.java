@@ -3,9 +3,15 @@ package com.covenantcode.crm.controller;
 import com.covenantcode.crm.dto.teacher.TeacherCreateRequest;
 import com.covenantcode.crm.BaseIntegrationTest;
 import com.covenantcode.crm.entity.Role;
+import com.covenantcode.crm.entity.StudyGroup;
 import com.covenantcode.crm.entity.User;
+import com.covenantcode.crm.entity.Course;
+import com.covenantcode.crm.entity.enums.CourseStatus;
 import com.covenantcode.crm.entity.enums.RoleName;
+import com.covenantcode.crm.entity.enums.GroupStatus;
+import com.covenantcode.crm.repository.CourseRepository;
 import com.covenantcode.crm.repository.RoleRepository;
+import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.security.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,14 +26,18 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -55,6 +65,12 @@ class TeacherControllerIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     private RoleRepository roleRepository;
+
+    @Autowired
+    private StudyGroupRepository studyGroupRepository;
+
+    @Autowired
+    private CourseRepository courseRepository;
 
     private String adminToken;
     private User testTeacher;
@@ -280,5 +296,79 @@ class TeacherControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.errors[*].field").value(hasItem("firstName")))
                 .andExpect(jsonPath("$.errors[*].field").value(hasItem("email")))
                 .andExpect(jsonPath("$.errors[*].field").value(hasItem("password")));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/teachers/{id} — 204 без групп, преподаватель удалён")
+    void deleteTeacher_shouldReturn204_whenNoGroups() throws Exception {
+        Long teacherId = testTeacher.getId();
+
+        mockMvc.perform(delete("/api/v1/teachers/{id}", teacherId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+
+        assertThat(userRepository.findById(teacherId)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/teachers/{id} — 409 Conflict, если есть группы")
+    @Transactional
+    void deleteTeacher_shouldReturn409_whenHasGroups() throws Exception {
+        Long teacherId = testTeacher.getId();
+
+        Course course = Course.builder()
+                .title("Математика")
+                .description("Базовый курс")
+                .durationInWeeks(12)
+                .price(new BigDecimal("1000.00"))
+                .status(CourseStatus.ACTIVE)
+                .build();
+        course = courseRepository.save(course);
+
+        StudyGroup group = StudyGroup.builder()
+                .name("Группа А-101")
+                .course(course)
+                .teacher(testTeacher)
+                .startDate(LocalDate.now())
+                .status(GroupStatus.ACTIVE)
+                .build();
+        studyGroupRepository.save(group);
+
+        mockMvc.perform(delete("/api/v1/teachers/{id}", teacherId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.type").value("conflict"))
+                .andExpect(jsonPath("$.detail").value(
+                        matchesPattern("Невозможно удалить преподавателя: у него \\d+ групп\\(ы\\)\\. Сначала переназначьте группы\\.")
+                ));
+
+        assertThat(userRepository.findById(teacherId)).isPresent();
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/teachers/{id} — 404 Not Found для несуществующего ID")
+    void deleteTeacher_shouldReturn404_whenTeacherNotFound() throws Exception {
+        Long nonExistentId = 9999L;
+
+        mockMvc.perform(delete("/api/v1/teachers/{id}", nonExistentId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.type").value("resource-not-found"))
+                .andExpect(jsonPath("$.detail").value(
+                        "Преподаватель с id " + nonExistentId + " не найден"
+                ));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/teachers/{id} — 403 Forbidden для не-ADMIN")
+    void deleteTeacher_shouldReturn403_whenNotAdmin() throws Exception {
+        Long teacherId = testTeacher.getId();
+        String teacherToken = jwtService.generateToken(testTeacher);
+
+        mockMvc.perform(delete("/api/v1/teachers/{id}", teacherId)
+                        .header("Authorization", "Bearer " + teacherToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.type").value("forbidden"))
+                .andExpect(jsonPath("$.status").value(403));
     }
 }

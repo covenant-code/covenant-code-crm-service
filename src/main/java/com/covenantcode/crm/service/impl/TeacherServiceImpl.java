@@ -9,6 +9,7 @@ import com.covenantcode.crm.exception.ConflictException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.TeacherMapper;
 import com.covenantcode.crm.repository.RoleRepository;
+import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.TeacherSpecifications;
 import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.service.TeacherService;
@@ -30,6 +31,7 @@ public class TeacherServiceImpl implements TeacherService {
     private final TeacherMapper teacherMapper;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final StudyGroupRepository studyGroupRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -65,5 +67,25 @@ public class TeacherServiceImpl implements TeacherService {
 
         User savedUser = userRepository.saveAndFlush(user);
         return teacherMapper.toResponse(savedUser);
+    }
+
+    @Override
+    @Transactional
+    public void delete(Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Преподаватель с id " + id + " не найден"));
+
+        if (user.getRole() == null || !RoleName.TEACHER.equals(user.getRole().getName())) {
+            throw new ResourceNotFoundException("Преподаватель с id " + id + " не найден");
+        }
+
+        long groupCount = studyGroupRepository.countByTeacherId(id);
+        if (groupCount > 0) {
+            throw new ConflictException(
+                    String.format("Невозможно удалить преподавателя: у него %d групп(ы). Сначала переназначьте группы.", groupCount)
+            );
+        }
+
+        userRepository.delete(user);
     }
 }
