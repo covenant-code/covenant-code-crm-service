@@ -80,7 +80,10 @@ class TeacherControllerIntegrationTest extends BaseIntegrationTest {
 
     @BeforeEach
     void setUp() {
+
+        studyGroupRepository.deleteAllInBatch();
         userRepository.deleteAllInBatch();
+        courseRepository.deleteAllInBatch();
 
         Role adminRole = roleRepository.findByName(RoleName.ADMIN)
                 .orElseGet(() -> roleRepository.save(Role.builder().name(RoleName.ADMIN).build()));
@@ -121,6 +124,7 @@ class TeacherControllerIntegrationTest extends BaseIntegrationTest {
 
         userRepository.deleteAll(createdUsers);
         createdUsers.clear();
+
     }
 
     private final List<User> createdUsers = new ArrayList<>();
