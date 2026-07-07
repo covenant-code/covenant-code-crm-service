@@ -2,11 +2,11 @@ package com.covenantcode.crm.service.impl;
 
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupResponse;
-import com.covenantcode.crm.entity.User;
-import com.covenantcode.crm.entity.Role;
-import com.covenantcode.crm.entity.StudyGroup;
 import com.covenantcode.crm.entity.Course;
+import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.Student;
+import com.covenantcode.crm.entity.StudyGroup;
+import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.GroupStatus;
 import com.covenantcode.crm.entity.enums.RoleName;
 import com.covenantcode.crm.exception.BadRequestException;
@@ -16,25 +16,33 @@ import com.covenantcode.crm.repository.CourseRepository;
 import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.time.LocalDate;
-import java.util.Optional;
-import java.util.Set;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class StudyGroupServiceImplTest {
@@ -58,6 +66,31 @@ class StudyGroupServiceImplTest {
     private StudyGroupServiceImpl studyGroupService;
 
     private final LocalDate startDate = LocalDate.of(2026, 7, 6);
+    private StudyGroup group1, group2;
+    private StudyGroupResponse resp1, resp2;
+
+    @BeforeEach
+    void setUp() {
+        group1 = new StudyGroup();
+        group1.setId(1L);
+        group1.setName("Java Core");
+        group1.setStatus(GroupStatus.ACTIVE);
+
+        group2 = new StudyGroup();
+        group2.setId(2L);
+        group2.setName("Spring Boot");
+        group2.setStatus(GroupStatus.DRAFT);
+
+        resp1 = new StudyGroupResponse();
+        resp1.setId(1L);
+        resp1.setName("Java Core");
+        resp1.setStatus(GroupStatus.ACTIVE);
+
+        resp2 = new StudyGroupResponse();
+        resp2.setId(2L);
+        resp2.setName("Spring Boot");
+        resp2.setStatus(GroupStatus.DRAFT);
+    }
 
     @Test
     void createGroupWithoutStudents_shouldSucceed() {
@@ -301,6 +334,122 @@ class StudyGroupServiceImplTest {
                 .lastName("Test")
                 .role(teacherRole)
                 .build();
+    }
+
+    @Test
+    @DisplayName("Should return page with one group when no filters applied")
+    void getAll_NoFilters_ReturnsNonEmptyPage() {
+
+        Pageable pageable = PageRequest.of(0, 10);
+        when(studyGroupRepository.findAll(any(Specification.class), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(group1)));
+        when(studyGroupMapper.toResponse(group1)).thenReturn(resp1);
+
+
+        Page<StudyGroupResponse> result = studyGroupService.getAll(null, null, null, pageable);
+
+
+        assertThat(result).isNotNull();
+        assertThat(result.isEmpty()).isFalse();
+        assertThat(result.getTotalElements()).isEqualTo(1);
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getName()).isEqualTo("Java Core");
+        assertThat(result.getContent().get(0).getStatus()).isEqualTo(GroupStatus.ACTIVE);
+
+        verify(studyGroupRepository).findAll(any(Specification.class), eq(pageable));
+        verify(studyGroupMapper).toResponse(group1);
+    }
+
+    @Test
+    @DisplayName("Should apply courseId filter in specification")
+    void getAll_WithCourseIdFilter_AppliesSpecification() {
+
+        Pageable pageable = PageRequest.of(0, 10);
+        when(studyGroupRepository.findAll(any(Specification.class), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(group1)));
+        when(studyGroupMapper.toResponse(group1)).thenReturn(resp1);
+
+
+        studyGroupService.getAll(1L, null, null, pageable);
+
+
+        verify(studyGroupRepository).findAll(any(Specification.class), eq(pageable));
+    }
+
+    @Test
+    @DisplayName("Should apply teacherId filter in specification")
+    void getAll_WithTeacherIdFilter_AppliesSpecification() {
+
+        Pageable pageable = PageRequest.of(0, 10);
+        when(studyGroupRepository.findAll(any(Specification.class), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(group1)));
+        when(studyGroupMapper.toResponse(group1)).thenReturn(resp1);
+
+
+        studyGroupService.getAll(null, 3L, null, pageable);
+
+
+        verify(studyGroupRepository).findAll(any(Specification.class), eq(pageable));
+    }
+
+    @Test
+    @DisplayName("Should apply status filter in specification")
+    void getAll_WithStatusFilter_AppliesSpecification() {
+
+        Pageable pageable = PageRequest.of(0, 10);
+        when(studyGroupRepository.findAll(any(Specification.class), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(group1)));
+        when(studyGroupMapper.toResponse(group1)).thenReturn(resp1);
+
+
+        studyGroupService.getAll(null, null, GroupStatus.ACTIVE, pageable);
+
+
+        verify(studyGroupRepository).findAll(any(Specification.class), eq(pageable));
+    }
+
+
+    @Test
+    @DisplayName("Should return empty page when no groups match criteria")
+    void getAll_NoMatches_ReturnsEmptyPage() {
+
+        Pageable pageable = PageRequest.of(0, 10);
+        when(studyGroupRepository.findAll(any(Specification.class), eq(pageable)))
+                .thenReturn(Page.empty());
+
+        Page<StudyGroupResponse> result = studyGroupService.getAll(
+                99L, 99L, GroupStatus.CANCELLED, pageable
+        );
+
+        assertThat(result).isNotNull();
+        assertThat(result.isEmpty()).isTrue();
+        assertThat(result.getTotalElements()).isZero();
+        verify(studyGroupRepository).findAll(any(Specification.class), eq(pageable));
+        verifyNoInteractions(studyGroupMapper);
+    }
+
+    @Test
+    @DisplayName("Should return multiple groups when multiple exist and no filters")
+    void getAll_MultipleGroupsNoFilters_ReturnsPageWithMultipleItems() {
+
+        Pageable pageable = PageRequest.of(0, 10);
+        when(studyGroupRepository.findAll(any(Specification.class), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(group1, group2)));
+        when(studyGroupMapper.toResponse(group1)).thenReturn(resp1);
+        when(studyGroupMapper.toResponse(group2)).thenReturn(resp2);
+
+        Page<StudyGroupResponse> result = studyGroupService.getAll(null, null, null, pageable);
+
+
+        assertThat(result).isNotNull();
+        assertThat(result.getTotalElements()).isEqualTo(2);
+        assertThat(result.getContent()).hasSize(2);
+        assertThat(result.getContent().get(0).getName()).isEqualTo("Java Core");
+        assertThat(result.getContent().get(1).getName()).isEqualTo("Spring Boot");
+
+        verify(studyGroupRepository).findAll(any(Specification.class), eq(pageable));
+        verify(studyGroupMapper).toResponse(group1);
+        verify(studyGroupMapper).toResponse(group2);
     }
 }
 

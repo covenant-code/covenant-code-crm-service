@@ -3,9 +3,10 @@ package com.covenantcode.crm.controller;
 import com.covenantcode.crm.BaseIntegrationTest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.entity.Course;
-import com.covenantcode.crm.entity.User;
-import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.Role;
+import com.covenantcode.crm.entity.Student;
+import com.covenantcode.crm.entity.StudyGroup;
+import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.GroupStatus;
 import com.covenantcode.crm.entity.enums.RoleName;
 import com.covenantcode.crm.repository.CourseRepository;
@@ -14,20 +15,25 @@ import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDate;
-import java.util.Set;
-
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.is;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
 
@@ -110,6 +116,35 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
                 .email("student2@test.com")
                 .phone("987654321")
                 .build());
+
+        StudyGroup group1 = StudyGroup.builder()
+                .name("Morning Java")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now())
+                .status(GroupStatus.ACTIVE)
+                .students(new HashSet<>(Set.of(student1, student2)))
+                .build();
+
+        StudyGroup group2 = StudyGroup.builder()
+                .name("Evening Java")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now().plusDays(7))
+                .status(GroupStatus.ACTIVE)
+                .students(new HashSet<>(Set.of(student2)))
+                .build();
+
+        StudyGroup group3 = StudyGroup.builder()
+                .name("Advanced Java")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now().plusDays(14))
+                .status(GroupStatus.COMPLETED)
+                .students(new HashSet<>())
+                .build();
+        studyGroupRepository.saveAll(List.of(group1, group2, group3));
+
     }
 
     @Test
@@ -198,6 +233,70 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(post("/api/v1/groups")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("Список без фильтров — должен вернуть все группы (3)")
+    void getAllStudyGroups_noFilters_shouldReturnAllGroups() throws Exception {
+        mockMvc.perform(get("/api/v1/groups")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(3));
+    }
+
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("Фильтр по courseId — должен вернуть только группы курса Java Core")
+    void getAllStudyGroups_filterByCourseId_shouldReturnOnlyMatchingGroups() throws Exception {
+        mockMvc.perform(get("/api/v1/groups")
+                        .param("courseId", testCourse.getId().toString())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.content[*].course.id").value(
+                        org.hamcrest.Matchers.everyItem(
+                                org.hamcrest.Matchers.is(
+                                        Integer.valueOf(testCourse.getId().intValue())
+                                )
+                        )
+                ));
+
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("Фильтр по status ACTIVE — должен вернуть только активные группы")
+    void getAllStudyGroups_filterByStatusActive_shouldReturnOnlyActiveGroups() throws Exception {
+        mockMvc.perform(get("/api/v1/groups")
+                        .param("status", GroupStatus.ACTIVE.name())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[*].status").value(everyItem(is(GroupStatus.ACTIVE.name()))));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("Пагинация: page=0&size=2 — должен вернуть 2 группы")
+    void getAllStudyGroups_pagination_shouldReturnPageWith2Groups() throws Exception {
+        mockMvc.perform(get("/api/v1/groups")
+                        .param("page", "0")
+                        .param("size", "2")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.content.length()").value(2));
+    }
+
+    @Test
+    @WithMockUser(roles = "TEACHER")
+    @DisplayName("TEACHER не может видеть список групп — 403")
+    void getAllStudyGroups_withTeacherRole_shouldReturn403() throws Exception {
+        mockMvc.perform(get("/api/v1/groups")
+                        .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());
     }
 }
