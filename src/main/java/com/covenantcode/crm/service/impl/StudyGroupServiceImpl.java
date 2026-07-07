@@ -15,13 +15,17 @@ import com.covenantcode.crm.repository.CourseRepository;
 import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
+import com.covenantcode.crm.repository.specification.StudyGroupSpecifications;
 import com.covenantcode.crm.service.StudyGroupService;
+import java.util.HashSet;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashSet;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -67,5 +71,20 @@ public class StudyGroupServiceImpl implements StudyGroupService {
         StudyGroup savedGroup = studyGroupRepository.save(group);
 
         return studyGroupMapper.toResponse(savedGroup);
+    }
+    @Override
+    @Transactional(readOnly = true)
+    public Page<StudyGroupResponse> getAll(Long courseId, Long teacherId, GroupStatus status, Pageable pageable) {
+        Specification<StudyGroup> spec = buildFilter(courseId, teacherId, status);
+
+
+        return studyGroupRepository.findAll(spec, pageable)
+                .map(studyGroupMapper::toResponse);
+    }
+    private Specification<StudyGroup> buildFilter(Long courseId, Long teacherId, GroupStatus status) {
+        return Specification.<StudyGroup>where(null)
+                .and(StudyGroupSpecifications.byCourseId(courseId))
+                .and(StudyGroupSpecifications.byTeacherId(teacherId))
+                .and(StudyGroupSpecifications.byStatus(status));
     }
 }
