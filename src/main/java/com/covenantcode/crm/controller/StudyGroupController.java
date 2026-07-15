@@ -1,5 +1,6 @@
 package com.covenantcode.crm.controller;
 
+import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupResponse;
 import com.covenantcode.crm.entity.enums.GroupStatus;
@@ -20,12 +21,14 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 
 @RestController
 @RequestMapping("/api/v1/groups")
@@ -74,5 +77,26 @@ public class StudyGroupController {
             @PageableDefault(size = 20, sort = "id") Pageable pageable
     ) {
         return studyGroupService.getAll(courseId, teacherId, status, pageable);
+    }
+
+    @Operation(
+            summary = "Изменение статуса учебной группы",
+            description = "Изменяет статус группы с проверкой допустимости перехода по статусной машине"
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Статус группы успешно изменён",
+                    content = @Content(schema = @Schema(implementation = StudyGroupResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Недопустимый переход или ошибка валидации"),
+            @ApiResponse(responseCode = "401", description = "Не авторизован"),
+            @ApiResponse(responseCode = "403", description = "Нет прав доступа"),
+            @ApiResponse(responseCode = "404", description = "Группа не найдена")
+    })
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<StudyGroupResponse> updateStatus(
+            @Parameter(description = "ID группы") @PathVariable Long id,
+            @Valid @RequestBody GroupStatusUpdateRequest request) {
+        StudyGroupResponse response = studyGroupService.updateStatus(id, request);
+        return ResponseEntity.ok(response);
     }
 }

@@ -1,5 +1,6 @@
 package com.covenantcode.crm.service.impl;
 
+import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupResponse;
 import com.covenantcode.crm.entity.Course;
@@ -450,6 +451,190 @@ class StudyGroupServiceImplTest {
         verify(studyGroupRepository).findAll(any(Specification.class), eq(pageable));
         verify(studyGroupMapper).toResponse(group1);
         verify(studyGroupMapper).toResponse(group2);
+    }
+
+    @Test
+    @DisplayName("DRAFT → ACTIVE: допустимый переход, статус изменён")
+    void updateStatus_DraftToActive_ShouldSucceed() {
+
+        Long groupId = 1L;
+        GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.ACTIVE);
+
+        StudyGroup group = StudyGroup.builder()
+                .id(groupId)
+                .status(GroupStatus.DRAFT)
+                .build();
+
+        StudyGroupResponse expectedResponse = StudyGroupResponse.builder()
+                .id(groupId)
+                .status(GroupStatus.ACTIVE)
+                .build();
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(studyGroupRepository.save(any(StudyGroup.class))).thenReturn(group);
+        when(studyGroupMapper.toResponse(any(StudyGroup.class))).thenReturn(expectedResponse);
+
+        StudyGroupResponse result = studyGroupService.updateStatus(groupId, request);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getStatus()).isEqualTo(GroupStatus.ACTIVE);
+        assertThat(group.getStatus()).isEqualTo(GroupStatus.ACTIVE);
+        verify(studyGroupRepository).findById(groupId);
+        verify(studyGroupRepository).save(group);
+        verify(studyGroupMapper).toResponse(group);
+    }
+
+    @Test
+    @DisplayName("ACTIVE → COMPLETED: допустимый переход, статус изменён")
+    void updateStatus_ActiveToCompleted_ShouldSucceed() {
+
+        Long groupId = 1L;
+        GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.COMPLETED);
+
+        StudyGroup group = StudyGroup.builder()
+                .id(groupId)
+                .status(GroupStatus.ACTIVE)
+                .build();
+
+        StudyGroupResponse expectedResponse = StudyGroupResponse.builder()
+                .id(groupId)
+                .status(GroupStatus.COMPLETED)
+                .build();
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(studyGroupRepository.save(any(StudyGroup.class))).thenReturn(group);
+        when(studyGroupMapper.toResponse(any(StudyGroup.class))).thenReturn(expectedResponse);
+
+        StudyGroupResponse result = studyGroupService.updateStatus(groupId, request);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getStatus()).isEqualTo(GroupStatus.COMPLETED);
+        assertThat(group.getStatus()).isEqualTo(GroupStatus.COMPLETED);
+        verify(studyGroupRepository).findById(groupId);
+        verify(studyGroupRepository).save(group);
+        verify(studyGroupMapper).toResponse(group);
+    }
+
+    @Test
+    @DisplayName("ACTIVE → CANCELLED: допустимый переход, статус изменён")
+    void updateStatus_ActiveToCancelled_ShouldSucceed() {
+
+        Long groupId = 1L;
+        GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.CANCELLED);
+
+        StudyGroup group = StudyGroup.builder()
+                .id(groupId)
+                .status(GroupStatus.ACTIVE)
+                .build();
+
+        StudyGroupResponse expectedResponse = StudyGroupResponse.builder()
+                .id(groupId)
+                .status(GroupStatus.CANCELLED)
+                .build();
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(studyGroupRepository.save(any(StudyGroup.class))).thenReturn(group);
+        when(studyGroupMapper.toResponse(any(StudyGroup.class))).thenReturn(expectedResponse);
+
+        StudyGroupResponse result = studyGroupService.updateStatus(groupId, request);
+
+        assertThat(result).isNotNull();
+        assertThat(result.getStatus()).isEqualTo(GroupStatus.CANCELLED);
+        assertThat(group.getStatus()).isEqualTo(GroupStatus.CANCELLED);
+        verify(studyGroupRepository).findById(groupId);
+        verify(studyGroupRepository).save(group);
+        verify(studyGroupMapper).toResponse(group);
+    }
+
+    @Test
+    @DisplayName("DRAFT → COMPLETED: недопустимый переход → BadRequestException с обоими статусами")
+    void updateStatus_DraftToCompleted_ShouldThrowBadRequestException() {
+
+        Long groupId = 1L;
+        GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.COMPLETED);
+
+        StudyGroup group = StudyGroup.builder()
+                .id(groupId)
+                .status(GroupStatus.DRAFT)
+                .build();
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> studyGroupService.updateStatus(groupId, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("DRAFT")
+                .hasMessageContaining("COMPLETED");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(studyGroupRepository, never()).save(any());
+        verifyNoInteractions(studyGroupMapper);
+    }
+
+    @Test
+    @DisplayName("COMPLETED → ACTIVE: переход из финального статуса → BadRequestException")
+    void updateStatus_CompletedToActive_ShouldThrowBadRequestException() {
+
+        Long groupId = 1L;
+        GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.ACTIVE);
+
+        StudyGroup group = StudyGroup.builder()
+                .id(groupId)
+                .status(GroupStatus.COMPLETED)
+                .build();
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> studyGroupService.updateStatus(groupId, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("COMPLETED")
+                .hasMessageContaining("ACTIVE");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(studyGroupRepository, never()).save(any());
+        verifyNoInteractions(studyGroupMapper);
+    }
+
+    @Test
+    @DisplayName("CANCELLED → ACTIVE: переход из финального статуса → BadRequestException")
+    void updateStatus_CancelledToActive_ShouldThrowBadRequestException() {
+
+        Long groupId = 1L;
+        GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.ACTIVE);
+
+        StudyGroup group = StudyGroup.builder()
+                .id(groupId)
+                .status(GroupStatus.CANCELLED)
+                .build();
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> studyGroupService.updateStatus(groupId, request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("CANCELLED")
+                .hasMessageContaining("ACTIVE");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(studyGroupRepository, never()).save(any());
+        verifyNoInteractions(studyGroupMapper);
+    }
+
+    @Test
+    @DisplayName("Группа не найдена → ResourceNotFoundException")
+    void updateStatus_GroupNotFound_ShouldThrowResourceNotFoundException() {
+
+        Long groupId = 99L;
+        GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.ACTIVE);
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> studyGroupService.updateStatus(groupId, request))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("StudyGroup")
+                .hasMessageContaining("99");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(studyGroupRepository, never()).save(any());
+        verifyNoInteractions(studyGroupMapper);
     }
 }
 

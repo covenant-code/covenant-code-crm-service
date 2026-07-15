@@ -1,6 +1,7 @@
 package com.covenantcode.crm.controller;
 
 import com.covenantcode.crm.BaseIntegrationTest;
+import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.Role;
@@ -30,8 +31,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.is;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -298,5 +300,120 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(get("/api/v1/groups")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("PATCH /{id}/status: DRAFT → ACTIVE → 200")
+    void updateStatus_DraftToActive_ShouldReturn200() throws Exception {
+
+        StudyGroup draftGroup = StudyGroup.builder()
+                .name("Draft Group")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now())
+                .status(GroupStatus.DRAFT)
+                .students(new HashSet<>())
+                .build();
+        draftGroup = studyGroupRepository.save(draftGroup);
+
+        GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.ACTIVE);
+        String requestJson = objectMapper.writeValueAsString(request);
+
+        mockMvc.perform(patch("/api/v1/groups/{id}/status", draftGroup.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(GroupStatus.ACTIVE.name()));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("PATCH /{id}/status: DRAFT → COMPLETED → 400")
+    void updateStatus_DraftToCompleted_ShouldReturn400() throws Exception {
+        StudyGroup draftGroup = StudyGroup.builder()
+                .name("Draft Group 2")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now())
+                .status(GroupStatus.DRAFT)
+                .students(new HashSet<>())
+                .build();
+        draftGroup = studyGroupRepository.save(draftGroup);
+
+        GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.COMPLETED);
+        String requestJson = objectMapper.writeValueAsString(request);
+
+        mockMvc.perform(patch("/api/v1/groups/{id}/status", draftGroup.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.type").value("bad-request"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("PATCH /{id}/status: COMPLETED → ACTIVE → 400")
+    void updateStatus_CompletedToActive_ShouldReturn400() throws Exception {
+
+        StudyGroup completedGroup = StudyGroup.builder()
+                .name("Completed Group")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now().minusDays(30))
+                .status(GroupStatus.COMPLETED)
+                .students(new HashSet<>())
+                .build();
+        completedGroup = studyGroupRepository.save(completedGroup);
+
+        GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.ACTIVE);
+        String requestJson = objectMapper.writeValueAsString(request);
+
+        mockMvc.perform(patch("/api/v1/groups/{id}/status", completedGroup.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.type").value("bad-request"));
+    }
+
+    @Test
+    @WithMockUser(roles = "TEACHER")
+    @DisplayName("PATCH /{id}/status: TEACHER → 403")
+    void updateStatus_WithTeacherRole_ShouldReturn403() throws Exception {
+
+        StudyGroup group = StudyGroup.builder()
+                .name("Test Group")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now())
+                .status(GroupStatus.DRAFT)
+                .students(new HashSet<>())
+                .build();
+        group = studyGroupRepository.save(group);
+
+        GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.ACTIVE);
+        String requestJson = objectMapper.writeValueAsString(request);
+
+        mockMvc.perform(patch("/api/v1/groups/{id}/status", group.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    @DisplayName("PATCH /{id}/status: группа не найдена → 404")
+    void updateStatus_GroupNotFound_ShouldReturn404() throws Exception {
+        // given
+        GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.ACTIVE);
+        String requestJson = objectMapper.writeValueAsString(request);
+        Long nonExistentId = 999L;
+
+        // when & then
+        mockMvc.perform(patch("/api/v1/groups/{id}/status", nonExistentId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.type").value("resource-not-found"));
     }
 }
