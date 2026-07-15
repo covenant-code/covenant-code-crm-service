@@ -1,5 +1,6 @@
 package com.covenantcode.crm.service;
 
+import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupResponse;
 import com.covenantcode.crm.entity.enums.GroupStatus;
@@ -11,5 +12,7 @@ public interface StudyGroupService {
     StudyGroupResponse create(StudyGroupCreateRequest request);
 
     Page<StudyGroupResponse> getAll(Long courseId, Long teacherId, GroupStatus status, Pageable pageable);
+
+    StudyGroupResponse updateStatus(Long id, GroupStatusUpdateRequest request);
 
 }

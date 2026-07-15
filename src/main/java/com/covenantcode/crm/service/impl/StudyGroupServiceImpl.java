@@ -1,5 +1,6 @@
 package com.covenantcode.crm.service.impl;
 
+import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupResponse;
 import com.covenantcode.crm.entity.Course;
@@ -18,6 +19,7 @@ import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.repository.specification.StudyGroupSpecifications;
 import com.covenantcode.crm.service.StudyGroupService;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -36,6 +38,13 @@ public class StudyGroupServiceImpl implements StudyGroupService {
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
     private final StudyGroupMapper studyGroupMapper;
+
+    private static final Map<GroupStatus, Set<GroupStatus>> ALLOWED_TRANSITIONS = Map.of(
+            GroupStatus.DRAFT, Set.of(GroupStatus.ACTIVE),
+            GroupStatus.ACTIVE, Set.of(GroupStatus.COMPLETED, GroupStatus.CANCELLED),
+            GroupStatus.COMPLETED, Set.of(),
+            GroupStatus.CANCELLED, Set.of()
+    );
 
     @Override
     @Transactional
@@ -72,6 +81,7 @@ public class StudyGroupServiceImpl implements StudyGroupService {
 
         return studyGroupMapper.toResponse(savedGroup);
     }
+
     @Override
     @Transactional(readOnly = true)
     public Page<StudyGroupResponse> getAll(Long courseId, Long teacherId, GroupStatus status, Pageable pageable) {
@@ -86,5 +96,32 @@ public class StudyGroupServiceImpl implements StudyGroupService {
                 .and(StudyGroupSpecifications.byCourseId(courseId))
                 .and(StudyGroupSpecifications.byTeacherId(teacherId))
                 .and(StudyGroupSpecifications.byStatus(status));
+    }
+
+    @Override
+    @Transactional
+    public StudyGroupResponse updateStatus(Long id, GroupStatusUpdateRequest request) {
+
+        StudyGroup group = studyGroupRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("StudyGroup с id " + id + " не найдена"));
+
+        GroupStatus currentStatus = group.getStatus();
+        GroupStatus newStatus = request.getStatus();
+
+        if (!isTransitionAllowed(currentStatus, newStatus)) {
+            throw new BadRequestException(
+                    String.format("Переход из %s в %s недопустим", currentStatus, newStatus)
+            );
+        }
+
+        group.setStatus(newStatus);
+
+        StudyGroup savedGroup = studyGroupRepository.save(group);
+        return studyGroupMapper.toResponse(savedGroup);
+    }
+
+    private boolean isTransitionAllowed(GroupStatus currentStatus, GroupStatus newStatus) {
+        Set<GroupStatus> allowedStatuses = ALLOWED_TRANSITIONS.get(currentStatus);
+        return allowedStatuses != null && allowedStatuses.contains(newStatus);
     }
 }
