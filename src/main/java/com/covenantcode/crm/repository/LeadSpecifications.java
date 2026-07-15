@@ -7,10 +7,8 @@ import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-
+import java.time.LocalDate;
+import java.time.ZoneId;
 
 public final class LeadSpecifications {
 
@@ -76,6 +74,27 @@ public final class LeadSpecifications {
             // Объединяем все условия через OR
             return cb.or(firstName, lastName, email, phone);
         };
+    }
+
+    // --- Поиск по дате создания "с" ---
+    public static Specification<Lead> createdFrom(LocalDate dateFrom) {
+        return (root, query, cb) ->
+                dateFrom == null
+                        ? cb.conjunction()
+                        : cb.greaterThanOrEqualTo(
+                        root.get("createdAt"),
+                        dateFrom.atStartOfDay(ZoneId.systemDefault()).toOffsetDateTime()
+                );
+    }
+
+    public static Specification<Lead> createdTo(LocalDate dateTo) {
+        return (root, query, cb) ->
+                dateTo == null
+                        ? cb.conjunction()
+                        : cb.lessThan(
+                        root.get("createdAt"),
+                        dateTo.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toOffsetDateTime()
+                );
     }
 }
 

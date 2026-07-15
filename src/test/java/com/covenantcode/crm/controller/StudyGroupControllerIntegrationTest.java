@@ -75,9 +75,17 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
         courseRepository.deleteAllInBatch();
 
         Role teacherRole = roleRepository.findByName(RoleName.TEACHER)
-                .orElseThrow(() -> new RuntimeException("Teacher role not found"));
+                .orElseGet(() -> {
+                    Role newRole = new Role();
+                    newRole.setName(RoleName.TEACHER);
+                    return roleRepository.save(newRole);
+                });
         Role managerRole = roleRepository.findByName(RoleName.MANAGER)
-                .orElseThrow(() -> new RuntimeException("Manager role not found"));
+                .orElseGet(() -> {
+                    Role newRole = new Role();
+                    newRole.setName(RoleName.MANAGER);
+                    return roleRepository.save(newRole);
+                });
 
         testCourse = courseRepository.save(Course.builder()
                 .title("Java for Test")
