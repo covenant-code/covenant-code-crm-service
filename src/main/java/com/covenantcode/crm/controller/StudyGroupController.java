@@ -3,6 +3,7 @@ package com.covenantcode.crm.controller;
 import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupResponse;
+import com.covenantcode.crm.dto.group.StudyGroupUpdateRequest;
 import com.covenantcode.crm.entity.enums.GroupStatus;
 import com.covenantcode.crm.service.StudyGroupService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,7 +24,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -97,6 +100,47 @@ public class StudyGroupController {
             @Parameter(description = "ID группы") @PathVariable Long id,
             @Valid @RequestBody GroupStatusUpdateRequest request) {
         StudyGroupResponse response = studyGroupService.updateStatus(id, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Operation(
+            summary = "Обновить учебную группу",
+            description = "Обновляет данные существующей учебной группы по её идентификатору. Доступно для ролей ADMIN и MANAGER."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Группа успешно обновлена",
+                    content = @Content(schema = @Schema(implementation = StudyGroupResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Некорректные входные данные или попытка изменить группу в финальном статусе",
+                    content = @Content
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Пользователь не аутентифицирован",
+                    content = @Content
+            ),
+            @ApiResponse(
+                    responseCode = "403",
+                    description = "Недостаточно прав (требуется роль ADMIN или MANAGER)",
+                    content = @Content
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Учебная группа, курс или учитель не найдены",
+                    content = @Content
+            )
+    })
+    public ResponseEntity<StudyGroupResponse> update(
+            @PathVariable Long id,
+            @Valid @RequestBody StudyGroupUpdateRequest request
+    ) {
+        StudyGroupResponse response = studyGroupService.update(id, request);
         return ResponseEntity.ok(response);
     }
 }

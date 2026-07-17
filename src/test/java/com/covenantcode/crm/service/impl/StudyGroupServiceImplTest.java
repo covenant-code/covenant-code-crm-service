@@ -1,8 +1,11 @@
 package com.covenantcode.crm.service.impl;
 
+import com.covenantcode.crm.dto.group.CourseShortResponse;
 import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupResponse;
+import com.covenantcode.crm.dto.group.StudyGroupUpdateRequest;
+import com.covenantcode.crm.dto.group.UserShortResponse;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.Student;
@@ -37,6 +40,10 @@ import org.springframework.data.jpa.domain.Specification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -67,20 +74,74 @@ class StudyGroupServiceImplTest {
     private StudyGroupServiceImpl studyGroupService;
 
     private final LocalDate startDate = LocalDate.of(2026, 7, 6);
-    private StudyGroup group1, group2;
+    private StudyGroup group1, group2, group3;
     private StudyGroupResponse resp1, resp2;
+    private Course course1, course2;
+    private User teacher1, teacher2, teacherWithoutRole;
+    private Role teacherRole;
+    private StudyGroupUpdateRequest updateRequest;
 
     @BeforeEach
     void setUp() {
+
+        // Создание ролей
+        teacherRole = new Role();
+        teacherRole.setName(RoleName.TEACHER);
+
+        // Создание курсов
+        course1 = new Course();
+        course1.setId(1L);
+        course1.setTitle("Java Core");
+
+        course2 = new Course();
+        course2.setId(2L);
+        course2.setTitle("Spring Boot");
+
+        // Создание учителей
+        teacher1 = new User();
+        teacher1.setId(100L);
+        teacher1.setFirstName("John");
+        teacher1.setLastName("Doe");
+        teacher1.setRole(teacherRole);
+
+        teacher2 = new User();
+        teacher2.setId(200L);
+        teacher2.setFirstName("Jane");
+        teacher2.setLastName("Smith");
+        teacher2.setRole(teacherRole);
+
+        teacherWithoutRole = new User();
+        teacherWithoutRole.setId(300L);
+        teacherWithoutRole.setFirstName("Bob");
+        teacherWithoutRole.setLastName("Johnson");
+        teacherWithoutRole.setRole(teacherRole);
+
+
+
         group1 = new StudyGroup();
         group1.setId(1L);
         group1.setName("Java Core");
         group1.setStatus(GroupStatus.ACTIVE);
+        group1.setStartDate(LocalDate.of(2024, 9, 1));
+        group1.setCourse(course1);
+        group1.setTeacher(teacher1);
 
         group2 = new StudyGroup();
         group2.setId(2L);
         group2.setName("Spring Boot");
         group2.setStatus(GroupStatus.DRAFT);
+        group2.setStartDate(LocalDate.of(2024, 10, 15));
+        group2.setCourse(course2);
+        group2.setTeacher(teacher2);
+
+
+        group3 = new StudyGroup();
+        group3.setId(3L);
+        group3.setName("Kotlin Advanced");
+        group3.setStatus(GroupStatus.COMPLETED);
+        group3.setStartDate(LocalDate.of(2024, 6, 1));
+        group3.setCourse(course1);
+        group3.setTeacher(teacher1);
 
         resp1 = new StudyGroupResponse();
         resp1.setId(1L);
@@ -91,6 +152,13 @@ class StudyGroupServiceImplTest {
         resp2.setId(2L);
         resp2.setName("Spring Boot");
         resp2.setStatus(GroupStatus.DRAFT);
+
+        // Инициализация запроса на обновление
+        updateRequest = new StudyGroupUpdateRequest();
+        updateRequest.setName("Updated Group");
+        updateRequest.setCourseId(2L);
+        updateRequest.setTeacherId(200L);
+        updateRequest.setStartDate(startDate);
     }
 
     @Test
@@ -451,6 +519,153 @@ class StudyGroupServiceImplTest {
         verify(studyGroupRepository).findAll(any(Specification.class), eq(pageable));
         verify(studyGroupMapper).toResponse(group1);
         verify(studyGroupMapper).toResponse(group2);
+    }
+
+
+    @Test
+    void update_Success_ShouldReturnUpdatedResponse_WhenGroupIsDraftAndAllValid() {
+        // Arrange
+        when(studyGroupRepository.findById(2L)).thenReturn(Optional.of(group2));
+        when(courseRepository.findById(2L)).thenReturn(Optional.of(course2));
+        when(userRepository.findById(200L)).thenReturn(Optional.of(teacher2));
+
+        StudyGroup updatedGroup = new StudyGroup();
+        updatedGroup.setId(2L);
+        updatedGroup.setName("Updated Group");
+        updatedGroup.setStatus(GroupStatus.DRAFT);
+        updatedGroup.setStartDate(LocalDate.of(2026, 7, 6));
+        updatedGroup.setCourse(course2);
+        updatedGroup.setTeacher(teacher2);
+        updatedGroup.setStudents(group2.getStudents()); // Гарантируем перенос студентов из существующей группы
+
+        // Создаем детальный mock-ответ, отражающий структуру из ТЗ
+        StudyGroupResponse expectedResponse = StudyGroupResponse.builder()
+                .id(2L)
+                .name("Updated Group")
+                .status(GroupStatus.DRAFT)
+                .startDate(LocalDate.of(2026, 7, 6))
+                .course(CourseShortResponse.builder().id(2L).name("Spring Boot").build())
+                .teacher(UserShortResponse.builder().id(200L).firstName("Jane").lastName("Smith").build())
+                .students(List.of()) // Проверяем, что поле присутствует в ответе и не равно null
+                .build();
+
+        when(studyGroupRepository.save(any(StudyGroup.class))).thenReturn(updatedGroup);
+        when(studyGroupMapper.toResponse(updatedGroup)).thenReturn(expectedResponse);
+
+        // Act
+        StudyGroupResponse response = studyGroupService.update(2L, updateRequest);
+
+        // Assert
+        assertNotNull(response);
+        assertEquals(2L, response.getId());
+        assertEquals("Updated Group", response.getName());
+        assertEquals(GroupStatus.DRAFT, response.getStatus());
+        assertEquals(LocalDate.of(2026, 7, 6), response.getStartDate());
+
+        // Сверка вложенных сущностей курса и учителя
+        assertNotNull(response.getCourse());
+        assertEquals(2L, response.getCourse().getId());
+        assertNotNull(response.getTeacher());
+        assertEquals(200L, response.getTeacher().getId());
+
+        // Критическая проверка на баг с пропавшими студентами (теперь упадет, если маппер вернет null/пустоту некорректно)
+        assertNotNull(response.getStudents(), "Поле students не должно быть null в ответе");
+
+        // Верификация вызовов
+        verify(studyGroupRepository).save(any(StudyGroup.class));
+        verify(studyGroupMapper).toResponse(updatedGroup);
+    }
+
+    @Test
+    void update_ShouldThrowBadRequestException_WhenGroupStatusIsCompleted() {
+        // Arrange
+        when(studyGroupRepository.findById(3L)).thenReturn(Optional.of(group3));
+
+        // Act & Assert
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> studyGroupService.update(3L, updateRequest));
+
+        // Исправлено: текст ошибки на русском языке
+        assertTrue(exception.getMessage().contains("Нельзя редактировать группу в статусе COMPLETED"));
+    }
+
+    @Test
+    void update_ShouldThrowBadRequestException_WhenGroupStatusIsCancelled() {
+        // Arrange
+        StudyGroup cancelledGroup = new StudyGroup();
+        cancelledGroup.setId(4L);
+        cancelledGroup.setStatus(GroupStatus.CANCELLED);
+        when(studyGroupRepository.findById(4L)).thenReturn(Optional.of(cancelledGroup));
+
+        // Act & Assert
+        BadRequestException exception = assertThrows(BadRequestException.class,
+                () -> studyGroupService.update(4L, updateRequest));
+
+        // Исправлено: текст ошибки на русском языке
+        assertTrue(exception.getMessage().contains("Нельзя редактировать группу в статусе CANCELLED"));
+    }
+
+    @Test
+    void update_ShouldThrowResourceNotFoundException_WhenGroupNotFound() {
+        // Arrange
+        when(studyGroupRepository.findById(99L)).thenReturn(Optional.empty());
+
+        // Act & Assert
+        ResourceNotFoundException exception = assertThrows(ResourceNotFoundException.class,
+                () -> studyGroupService.update(99L, updateRequest));
+
+        // Исправлено: текст ошибки на русском языке
+        assertTrue(exception.getMessage().contains("StudyGroup с id 99 не найдена"));
+    }
+
+    @Test
+    void update_ShouldThrowResourceNotFoundException_WhenCourseNotFound() {
+        // Arrange
+        when(studyGroupRepository.findById(2L)).thenReturn(Optional.of(group2));
+        when(courseRepository.findById(2L)).thenReturn(Optional.empty());
+
+        // Act & Assert
+        ResourceNotFoundException exception = assertThrows(ResourceNotFoundException.class,
+                () -> studyGroupService.update(2L, updateRequest));
+
+        // Исправлено: текст ошибки на русском языке
+        assertTrue(exception.getMessage().contains("Course с id 2 не найден"));
+    }
+
+    @Test
+    void update_ShouldThrowResourceNotFoundException_WhenTeacherNotFound() {
+        // Arrange
+        when(studyGroupRepository.findById(2L)).thenReturn(Optional.of(group2));
+        when(courseRepository.findById(2L)).thenReturn(Optional.of(course2));
+        when(userRepository.findById(200L)).thenReturn(Optional.empty());
+
+        // Act & Assert
+        ResourceNotFoundException exception = assertThrows(ResourceNotFoundException.class,
+                () -> studyGroupService.update(2L, updateRequest));
+
+        // Исправлено: изменен тип сущности на User и язык на русский
+        assertTrue(exception.getMessage().contains("User с id 200 не найден"));
+    }
+
+    @Test
+    void update_ShouldThrowBadRequestException_WhenTeacherHasNoTeacherRole() {
+        // Arrange
+        Role role = new Role();
+        role.setName(RoleName.STUDENT);
+
+        teacherWithoutRole.setId(200L);
+        teacherWithoutRole.setRole(role);
+
+        when(studyGroupRepository.findById(any(Long.class))).thenReturn(Optional.of(group2));
+        when(courseRepository.findById(any(Long.class))).thenReturn(Optional.of(course2));
+        when(userRepository.findById(any(Long.class))).thenReturn(Optional.of(teacherWithoutRole));
+
+        // Act & Assert
+        BadRequestException exception = assertThrows(BadRequestException.class, () ->
+                studyGroupService.update(2L, updateRequest));
+
+        // Исправлено: текст ошибки на русском языке
+        assertTrue(exception.getMessage().contains("Пользователь с id 200 не является учителем"));
     }
 
     @Test

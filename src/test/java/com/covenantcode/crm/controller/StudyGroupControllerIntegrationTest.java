@@ -3,6 +3,7 @@ package com.covenantcode.crm.controller;
 import com.covenantcode.crm.BaseIntegrationTest;
 import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
+import com.covenantcode.crm.dto.group.StudyGroupUpdateRequest;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.Student;
@@ -31,9 +32,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.is;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -60,6 +62,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private StudyGroupRepository studyGroupRepository;
 
+
     private Course testCourse;
     private User teacher;
     private Student student1;
@@ -73,6 +76,8 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
         studentRepository.deleteAllInBatch();
         userRepository.deleteAllInBatch();
         courseRepository.deleteAllInBatch();
+        roleRepository.deleteAll();
+
 
         Role teacherRole = roleRepository.findByName(RoleName.TEACHER)
                 .orElseGet(() -> {
@@ -80,6 +85,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
                     newRole.setName(RoleName.TEACHER);
                     return roleRepository.save(newRole);
                 });
+
         Role managerRole = roleRepository.findByName(RoleName.MANAGER)
                 .orElseGet(() -> {
                     Role newRole = new Role();
@@ -112,6 +118,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
                 .role(managerRole)
                 .enabled(true)
                 .build());
+        userRepository.save(manager);
 
         student1 = studentRepository.save(Student.builder()
                 .firstName("Student1")
@@ -171,7 +178,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
         String requestJson = objectMapper.writeValueAsString(request);
 
         mockMvc.perform(post("/api/v1/groups")
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").exists())
@@ -199,7 +206,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
         String requestJson = objectMapper.writeValueAsString(request);
 
         mockMvc.perform(post("/api/v1/groups")
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.type").value("resource-not-found"))
@@ -220,7 +227,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
         String requestJson = objectMapper.writeValueAsString(request);
 
         mockMvc.perform(post("/api/v1/groups")
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.type").value("bad-request"))
@@ -241,7 +248,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
         String requestJson = objectMapper.writeValueAsString(request);
 
         mockMvc.perform(post("/api/v1/groups")
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
                         .content(requestJson))
                 .andExpect(status().isForbidden());
     }
@@ -251,7 +258,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     @DisplayName("Список без фильтров — должен вернуть все группы (3)")
     void getAllStudyGroups_noFilters_shouldReturnAllGroups() throws Exception {
         mockMvc.perform(get("/api/v1/groups")
-                        .contentType(MediaType.APPLICATION_JSON))
+                        .contentType(APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(3));
     }
@@ -263,7 +270,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     void getAllStudyGroups_filterByCourseId_shouldReturnOnlyMatchingGroups() throws Exception {
         mockMvc.perform(get("/api/v1/groups")
                         .param("courseId", testCourse.getId().toString())
-                        .contentType(MediaType.APPLICATION_JSON))
+                        .contentType(APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(3))
                 .andExpect(jsonPath("$.content[*].course.id").value(
@@ -282,7 +289,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     void getAllStudyGroups_filterByStatusActive_shouldReturnOnlyActiveGroups() throws Exception {
         mockMvc.perform(get("/api/v1/groups")
                         .param("status", GroupStatus.ACTIVE.name())
-                        .contentType(MediaType.APPLICATION_JSON))
+                        .contentType(APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(2))
                 .andExpect(jsonPath("$.content[*].status").value(everyItem(is(GroupStatus.ACTIVE.name()))));
@@ -295,7 +302,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
         mockMvc.perform(get("/api/v1/groups")
                         .param("page", "0")
                         .param("size", "2")
-                        .contentType(MediaType.APPLICATION_JSON))
+                        .contentType(APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(3))
                 .andExpect(jsonPath("$.content.length()").value(2));
@@ -306,7 +313,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     @DisplayName("TEACHER не может видеть список групп — 403")
     void getAllStudyGroups_withTeacherRole_shouldReturn403() throws Exception {
         mockMvc.perform(get("/api/v1/groups")
-                        .contentType(MediaType.APPLICATION_JSON))
+                        .contentType(APPLICATION_JSON))
                 .andExpect(status().isForbidden());
     }
 
@@ -423,5 +430,133 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
                         .content(requestJson))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.type").value("resource-not-found"));
+    }
+
+
+    @Test
+    @DisplayName("Успешное обновление учебной группы со статусом DRAFT")
+    void updateStudyGroup_WhenValidRequestAndDraftStatus_Returns200AndUpdatedGroup() throws Exception {
+
+        StudyGroup draftGroup = StudyGroup.builder()
+                .name("Old Draft Name")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now())
+                .status(GroupStatus.DRAFT)
+                .students(new java.util.HashSet<>(java.util.Set.of(student1)))
+                .build();
+        StudyGroup savedGroup = studyGroupRepository.save(draftGroup);
+
+
+        StudyGroupUpdateRequest updateRequest = StudyGroupUpdateRequest.builder()
+                .name("Updated Group Name")
+                .courseId(testCourse.getId())
+                .teacherId(teacher.getId())
+                .startDate(LocalDate.now().plusDays(5))
+                .build();
+
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/groups/{id}", savedGroup.getId())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(manager.getEmail()).roles("MANAGER"))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.id").value(savedGroup.getId()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.name").value("Updated Group Name"));
+
+
+        StudyGroup updatedInDb = studyGroupRepository.findById(savedGroup.getId()).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals("Updated Group Name", updatedInDb.getName());
+        org.junit.jupiter.api.Assertions.assertEquals(LocalDate.now().plusDays(5), updatedInDb.getStartDate());
+    }
+
+    @Test
+    @DisplayName("Тест 2: Попытка обновить группу в финальном статусе COMPLETED должна возвращать 400")
+    void updateStudyGroup_WhenStatusIsCompleted_Returns400BadRequest() throws Exception {
+
+        StudyGroup completedGroup = StudyGroup.builder()
+                .name("Completed Java Group")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now().minusDays(30))
+                .status(GroupStatus.COMPLETED)
+                .students(new java.util.HashSet<>())
+                .build();
+        StudyGroup savedGroup = studyGroupRepository.save(completedGroup);
+
+        StudyGroupUpdateRequest updateRequest = StudyGroupUpdateRequest.builder()
+                .name("Attempt to Rename Completed")
+                .courseId(testCourse.getId())
+                .teacherId(teacher.getId())
+                .startDate(LocalDate.now())
+                .build();
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/groups/{id}", savedGroup.getId())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(manager.getEmail()).roles("MANAGER"))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.type").value("bad-request"));
+    }
+
+    @Test
+    @DisplayName("Тест 3: Обновление группы с назначением пользователя без роли TEACHER должно возвращать 400")
+    void updateStudyGroup_WhenNewTeacherHasWrongRole_Returns400BadRequest() throws Exception {
+
+        StudyGroup draftGroup = StudyGroup.builder()
+                .name("Valid Draft Group")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now())
+                .status(GroupStatus.DRAFT)
+                .students(new java.util.HashSet<>())
+                .build();
+        StudyGroup savedGroup = studyGroupRepository.save(draftGroup);
+
+        StudyGroupUpdateRequest updateRequest = StudyGroupUpdateRequest.builder()
+                .name("Updated Group Name")
+                .courseId(testCourse.getId())
+                .teacherId(manager.getId())
+                .startDate(LocalDate.now().plusDays(5))
+                .build();
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/groups/{id}", savedGroup.getId())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(manager.getEmail()).roles("MANAGER"))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+    }
+    @Test
+    @DisplayName("Тест 4: Пользователь с ролью TEACHER не имеет прав на обновление группы и получает 403")
+    void updateStudyGroup_WhenUserIsTeacher_Returns403Forbidden() throws Exception {
+
+        StudyGroup draftGroup = StudyGroup.builder()
+                .name("Valid Draft Group")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now())
+                .status(GroupStatus.DRAFT)
+                .students(new java.util.HashSet<>())
+                .build();
+        StudyGroup savedGroup = studyGroupRepository.save(draftGroup);
+
+        StudyGroupUpdateRequest updateRequest = StudyGroupUpdateRequest.builder()
+                .name("Updated Group Name")
+                .courseId(testCourse.getId())
+                .teacherId(teacher.getId())
+                .startDate(LocalDate.now().plusDays(5))
+                .build();
+
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/groups/{id}", savedGroup.getId())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(teacher.getEmail()).roles("TEACHER"))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(updateRequest)))
+
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
     }
 }

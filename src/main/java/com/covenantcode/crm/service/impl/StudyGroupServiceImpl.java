@@ -3,6 +3,7 @@ package com.covenantcode.crm.service.impl;
 import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupResponse;
+import com.covenantcode.crm.dto.group.StudyGroupUpdateRequest;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.StudyGroup;
@@ -96,6 +97,41 @@ public class StudyGroupServiceImpl implements StudyGroupService {
                 .and(StudyGroupSpecifications.byCourseId(courseId))
                 .and(StudyGroupSpecifications.byTeacherId(teacherId))
                 .and(StudyGroupSpecifications.byStatus(status));
+    }
+    @Override
+    @Transactional
+    public StudyGroupResponse update(Long id, StudyGroupUpdateRequest request) {
+        // 1. Поиск существующей группы
+        StudyGroup existingGroup = studyGroupRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("StudyGroup с id " + id + " не найдена"));
+
+        // 2. Проверка статуса группы (финальные статусы)
+        if (existingGroup.getStatus() == GroupStatus.COMPLETED || existingGroup.getStatus() == GroupStatus.CANCELLED) {
+            throw new BadRequestException("Нельзя редактировать группу в статусе " + existingGroup.getStatus());
+        }
+
+        // 3. Загрузка и проверка нового курса
+        Course course = courseRepository.findById(request.getCourseId())
+                .orElseThrow(() -> new ResourceNotFoundException("Course с id " + request.getCourseId() + " не найден"));
+
+        // 4. Загрузка и проверка нового учителя
+        User teacher = userRepository.findById(request.getTeacherId())
+                .orElseThrow(() -> new ResourceNotFoundException("User с id " + request.getTeacherId() + " не найден"));
+
+        // 5. Проверка роли учителя
+        if (teacher.getRole() == null || !RoleName.TEACHER.equals(teacher.getRole().getName())) {
+            throw new BadRequestException("Пользователь с id " + request.getTeacherId() + " не является учителем");
+        }
+
+        // 6. Обновление полей группы
+        existingGroup.setName(request.getName());
+        existingGroup.setCourse(course);
+        existingGroup.setTeacher(teacher);
+        existingGroup.setStartDate(request.getStartDate());
+
+        // 7. Сохранение и возврат результата через маппер
+        StudyGroup updatedGroup = studyGroupRepository.save(existingGroup);
+        return studyGroupMapper.toResponse(updatedGroup);
     }
 
     @Override
