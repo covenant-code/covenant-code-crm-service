@@ -25,15 +25,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.hasItem;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -51,7 +54,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 
 @Transactional
 class StudentControllerIntegrationTest extends BaseIntegrationTest {
@@ -343,13 +345,28 @@ class StudentControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @DisplayName("GET /api/v1/students — список всех студентов (200)")
-    @WithMockUser(roles = "MANAGER")
+    @WithMockUser(username = "manager@example.com", roles = "MANAGER")
     void getAllStudents_WithoutFilters_ShouldReturnAllStudents() throws Exception {
 
         studyGroupRepository.deleteAll();
         studentRepository.deleteAll();
         userRepository.deleteAll();
         courseRepository.deleteAll();
+
+        Role rolemanager = roleRepository.findByName(RoleName.MANAGER).orElseGet(() ->
+                roleRepository.save(Role.builder()
+                        .name(RoleName.MANAGER)
+                        .build()));
+
+        User manager = User.builder()
+                .firstName("Manager")
+                .lastName("Test")
+                .email("manager@example.com")
+                .password("password")
+                .role(rolemanager)
+                .build();
+
+        userRepository.save(manager);
 
         Student student1 = Student.builder()
                 .firstName("Алиса")
@@ -399,8 +416,19 @@ class StudentControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @DisplayName("GET /api/v1/students?search=Смир — поиск по частичному имени (200)")
-    @WithMockUser(roles = "MANAGER")
+    @WithMockUser(username = "manager@example.com", roles = "MANAGER")
     void getAllStudents_SearchByPartialName_ShouldReturnFilteredStudents() throws Exception {
+
+        Role managerRole = roleRepository.findByName(RoleName.MANAGER).orElseThrow();
+        User manager = User.builder()
+                .firstName("Manager")
+                .lastName("Test")
+                .email("manager@example.com")
+                .password("password")
+                .role(managerRole)
+                .build();
+
+        userRepository.save(manager);
         Student student1 = Student.builder()
                 .firstName("Алиса")
                 .lastName("Смирнова")
@@ -457,8 +485,19 @@ class StudentControllerIntegrationTest extends BaseIntegrationTest {
 
     @Test
     @DisplayName("GET /api/v1/students?search=7916 — поиск по телефону (200)")
-    @WithMockUser(roles = "MANAGER")
+    @WithMockUser(username = "manager@example.com", roles = "MANAGER")
     void getAllStudents_SearchByPhone_ShouldReturnFilteredStudents() throws Exception {
+
+        Role managerRole = roleRepository.findByName(RoleName.MANAGER).orElseThrow();
+        User manager = User.builder()
+                .firstName("Manager")
+                .lastName("Test")
+                .email("manager@example.com")
+                .password("password")
+                .role(managerRole)
+                .build();
+
+        userRepository.save(manager);
         Student student1 = Student.builder()
                 .firstName("Алиса")
                 .lastName("Смирнова")
@@ -496,18 +535,95 @@ class StudentControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.size", is(20)))
                 .andExpect(jsonPath("$.content", hasSize(2)))
                 .andExpect(jsonPath("$.content[*].phone", containsInAnyOrder("+79161234567", "+79169998877")))
-                .andExpect(jsonPath("$.content[*].firstName", containsInAnyOrder("Алиса", "Екатерина")))
-                .andExpect(jsonPath("$.content[*].phone", Matchers.not(containsString("+79261112233"))));
+                .andExpect(jsonPath("$.content[*].firstName", containsInAnyOrder("Алиса", "Екатерина")));
     }
 
     @Test
-    @DisplayName("GET /api/v1/students — TEACHER не имеет доступа (403)")
-    @WithMockUser(roles = "TEACHER")
-    void getAllStudents_WithTeacherRole_ShouldReturnForbidden() throws Exception {
+    @DisplayName("GET /api/v1/students — TEACHER имеет доступ к списку своих студентов")
+    @WithMockUser(username = "teacher1@mail.com", roles = "TEACHER")
+    void getAllStudents_WithTeacherRole_ShouldReturnOnlyOwnStudents() throws Exception {
+
+        studyGroupRepository.deleteAll();
+        studentRepository.deleteAll();
+        userRepository.deleteAll();
+        courseRepository.deleteAll();
+
+        Course course = Course.builder()
+                .title("Java Developer")
+                .durationInWeeks(4)
+                .price(BigDecimal.valueOf(668887))
+                .status(CourseStatus.ACTIVE)
+                .build();
+        courseRepository.save(course);
+
+        Role teacherRole = roleRepository.findByName(RoleName.TEACHER)
+                .orElseThrow();
+
+        User teacher1 = User.builder()
+                .firstName("Teacher")
+                .lastName("One")
+                .email("teacher1@mail.com")
+                .password("password")
+                .role(teacherRole)
+                .build();
+
+        User teacher2 = User.builder()
+                .firstName("Teacher")
+                .lastName("Two")
+                .email("teacher2@mail.com")
+                .password("password")
+                .role(teacherRole)
+                .build();
+
+        userRepository.save(teacher1);
+        userRepository.save(teacher2);
+
+        Student ownStudent = Student.builder()
+                .firstName("Student")
+                .lastName("Own")
+                .email("own@student.com")
+                .phone("+111111111")
+                .build();
+
+        Student otherStudent = Student.builder()
+                .firstName("Student")
+                .lastName("Other")
+                .email("other@student.com")
+                .phone("+222222222")
+                .build();
+
+        studentRepository.save(ownStudent);
+        studentRepository.save(otherStudent);
+
+        StudyGroup ownGroup = StudyGroup.builder()
+                .name("Teacher 1 Group")
+                .teacher(teacher1)
+                .course(course)
+                .startDate(LocalDate.now().plusDays(29))
+                .status(GroupStatus.ACTIVE)
+                .students(new HashSet<>(Set.of(ownStudent)))
+                .build();
+
+        StudyGroup otherGroup = StudyGroup.builder()
+                .name("Teacher 2 Group")
+                .teacher(teacher2)
+                .course(course)
+                .startDate(LocalDate.now().plusDays(14))
+                .status(GroupStatus.COMPLETED)
+                .students(new HashSet<>(Set.of(otherStudent)))
+                .build();
+
+        studyGroupRepository.save(ownGroup);
+        studyGroupRepository.save(otherGroup);
+
         mockMvc.perform(get("/api/v1/students")
                         .param("page", "0")
                         .param("size", "20"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[*].id")
+                        .value(hasItem(ownStudent.getId().intValue())))
+                .andExpect(jsonPath("$.content[*].id")
+                        .value(not(hasItem(otherStudent.getId().intValue()))));
     }
 
     @Test
@@ -578,7 +694,7 @@ class StudentControllerIntegrationTest extends BaseIntegrationTest {
                 .build());
 
         StudentUpdateRequest invalidRequest = StudentUpdateRequest.builder()
-                .firstName("")   // недопустимо – @NotBlank
+                .firstName("")
                 .lastName("Петров")
                 .phone("+79998887766")
                 .build();

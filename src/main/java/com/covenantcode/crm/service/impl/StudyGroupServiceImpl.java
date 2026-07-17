@@ -4,16 +4,25 @@ import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupResponse;
 import com.covenantcode.crm.dto.group.StudyGroupUpdateRequest;
+
+import com.covenantcode.crm.dto.lesson.LessonResponse;
+import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.entity.Course;
+
 import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.StudyGroup;
 import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.GroupStatus;
 import com.covenantcode.crm.entity.enums.RoleName;
 import com.covenantcode.crm.exception.BadRequestException;
+import com.covenantcode.crm.exception.ForbiddenException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
+import com.covenantcode.crm.mapper.LessonMapper;
+import com.covenantcode.crm.mapper.StudentMapper;
 import com.covenantcode.crm.mapper.StudyGroupMapper;
 import com.covenantcode.crm.repository.CourseRepository;
+import com.covenantcode.crm.repository.LessonRepository;
+
 import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
@@ -22,13 +31,16 @@ import com.covenantcode.crm.service.StudyGroupService;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+
+import com.covenantcode.crm.utils.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +51,12 @@ public class StudyGroupServiceImpl implements StudyGroupService {
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
     private final StudyGroupMapper studyGroupMapper;
+    private final CurrentUserProvider currentUserProvider;
+
+    private final StudentMapper studentMapper;
+    private final LessonRepository lessonRepository;
+    private final LessonMapper lessonMapper;
+
 
     private static final Map<GroupStatus, Set<GroupStatus>> ALLOWED_TRANSITIONS = Map.of(
             GroupStatus.DRAFT, Set.of(GroupStatus.ACTIVE),
@@ -86,17 +104,32 @@ public class StudyGroupServiceImpl implements StudyGroupService {
     @Override
     @Transactional(readOnly = true)
     public Page<StudyGroupResponse> getAll(Long courseId, Long teacherId, GroupStatus status, Pageable pageable) {
-        Specification<StudyGroup> spec = buildFilter(courseId, teacherId, status);
+        Specification<StudyGroup> specification =
+                StudyGroupSpecifications.withFilters(courseId, teacherId, status);
 
+        if (currentUserProvider.isTeacher()) {
+            Long currentUserId = currentUserProvider.getCurrentUserId();
 
-        return studyGroupRepository.findAll(spec, pageable)
+            specification = specification.and(
+                    StudyGroupSpecifications.hasTeacherId(currentUserId)
+            );
+        }
+
+        return studyGroupRepository.findAll(specification, pageable)
                 .map(studyGroupMapper::toResponse);
     }
-    private Specification<StudyGroup> buildFilter(Long courseId, Long teacherId, GroupStatus status) {
-        return Specification.<StudyGroup>where(null)
-                .and(StudyGroupSpecifications.byCourseId(courseId))
-                .and(StudyGroupSpecifications.byTeacherId(teacherId))
-                .and(StudyGroupSpecifications.byStatus(status));
+
+    @Override
+    @Transactional(readOnly = true)
+    public StudyGroupResponse getGroupById(Long id) {
+        StudyGroup group = studyGroupRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Группа не найдена"));
+
+        if (currentUserProvider.isTeacher()) {
+            checkTeacherHasAccessToGroup(group);
+        }
+
+        return studyGroupMapper.toResponse(group);
     }
     @Override
     @Transactional
@@ -159,5 +192,50 @@ public class StudyGroupServiceImpl implements StudyGroupService {
     private boolean isTransitionAllowed(GroupStatus currentStatus, GroupStatus newStatus) {
         Set<GroupStatus> allowedStatuses = ALLOWED_TRANSITIONS.get(currentStatus);
         return allowedStatuses != null && allowedStatuses.contains(newStatus);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<StudentResponse> getGroupStudents(Long id) {
+        StudyGroup group = findGroupByIdOrThrow(id);
+
+        if (currentUserProvider.isTeacher()) {
+            checkTeacherHasAccessToGroup(group);
+        }
+
+        return group.getStudents()
+                .stream()
+                .map(studentMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LessonResponse> getGroupLessons(Long id) {
+        StudyGroup group = findGroupByIdOrThrow(id);
+
+        if (currentUserProvider.isTeacher()) {
+            checkTeacherHasAccessToGroup(group);
+        }
+
+        return lessonRepository.findAllByStudyGroupId(id)
+                .stream()
+                .map(lessonMapper::toResponse)
+                .toList();
+    }
+
+    private StudyGroup findGroupByIdOrThrow(Long id) {
+        return studyGroupRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Study group with id " + id + " not found"
+                ));
+    }
+
+    private void checkTeacherHasAccessToGroup(StudyGroup group) {
+        Long currentUserId = currentUserProvider.getCurrentUserId();
+
+        if (group.getTeacher() == null || !group.getTeacher().getId().equals(currentUserId)) {
+            throw new ForbiddenException("Нет доступа к этой группе");
+        }
     }
 }

@@ -4,7 +4,10 @@ import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupResponse;
 import com.covenantcode.crm.dto.group.StudyGroupUpdateRequest;
+import com.covenantcode.crm.dto.lesson.LessonResponse;
+import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.entity.enums.GroupStatus;
+
 import com.covenantcode.crm.service.StudyGroupService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -31,7 +34,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/groups")
@@ -57,7 +61,6 @@ public class StudyGroupController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-
     @Operation(
             summary = "Получение списка учебных групп",
             description = "Возвращает постраничный список учебных групп с возможностью фильтрации по курсу, преподавателю и статусу"
@@ -65,10 +68,10 @@ public class StudyGroupController {
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Список групп успешно получен"),
             @ApiResponse(responseCode = "401", description = "Пользователь не авторизован"),
-            @ApiResponse(responseCode = "403", description = "Недостаточно прав доступа (требуются роли ADMIN или MANAGER)")
+            @ApiResponse(responseCode = "403", description = "Недостаточно прав доступа")
     })
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEACHER')")
     public Page<StudyGroupResponse> getAllStudyGroups(
             @Parameter(description = "Идентификатор курса для фильтрации")
             @RequestParam(required = false) Long courseId,
@@ -142,5 +145,23 @@ public class StudyGroupController {
     ) {
         StudyGroupResponse response = studyGroupService.update(id, request);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEACHER')")
+    public ResponseEntity<StudyGroupResponse> getGroupById(@PathVariable Long id) {
+        return ResponseEntity.ok(studyGroupService.getGroupById(id));
+    }
+
+    @GetMapping("/{id}/students")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEACHER')")
+    public ResponseEntity<List<StudentResponse>> getGroupStudents(@PathVariable Long id) {
+        return ResponseEntity.ok(studyGroupService.getGroupStudents(id));
+    }
+
+    @GetMapping("/{id}/lessons")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEACHER')")
+    public ResponseEntity<List<LessonResponse>> getGroupLessons(@PathVariable Long id) {
+        return ResponseEntity.ok(studyGroupService.getGroupLessons(id));
     }
 }

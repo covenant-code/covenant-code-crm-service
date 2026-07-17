@@ -3,7 +3,6 @@ package com.covenantcode.crm.controller;
 import com.covenantcode.crm.dto.student.StudentCreateRequest;
 import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.dto.student.StudentUpdateRequest;
-import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.service.StudentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -12,14 +11,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -55,10 +52,10 @@ public class StudentController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEACHER')")
     @Operation(
             summary = "Получить список студентов с пагинацией и поиском",
-            description = "Возвращает страницу студентов. Доступно ролям ADMIN, MANAGER"
+            description = "ADMIN и MANAGER видят всех студентов, TEACHER видит только студентов своих групп"
     )
     @ApiResponses({
             @ApiResponse(
@@ -70,12 +67,12 @@ public class StudentController {
             @ApiResponse(responseCode = "401", description = "Не авторизован"),
             @ApiResponse(responseCode = "403", description = "Доступ запрещён")
     })
-    public Page<StudentResponse> getAll(
+    public ResponseEntity<Page<StudentResponse>> getAll(
             @RequestParam(required = false) String search,
-            @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.ASC) Pageable pageable) {
-        return studentService.getAll(search, pageable);
+            @ParameterObject Pageable pageable
+    ) {
+        return ResponseEntity.ok(studentService.getAll(search, pageable));
     }
-
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
@@ -95,7 +92,10 @@ public class StudentController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "Получить студента по ID")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEACHER', 'STUDENT')")
+    @Operation(summary = "Получить студента по ID",
+            description = "ADMIN и MANAGER могут получить любого студента, TEACHER — только студента из своих групп"
+    )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Студент найден"),
             @ApiResponse(responseCode = "401", description = "Не авторизован"),
@@ -103,10 +103,9 @@ public class StudentController {
             @ApiResponse(responseCode = "404", description = "Студент не найден")
     })
     public ResponseEntity<StudentResponse> getById(
-            @PathVariable Long id,
-            @AuthenticationPrincipal User currentUser
+            @PathVariable Long id
     ) {
-        return ResponseEntity.ok(studentService.getById(id, currentUser));
+        return ResponseEntity.ok(studentService.getById(id));
     }
 
     @DeleteMapping("/{id}")

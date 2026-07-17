@@ -21,12 +21,16 @@ import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.TestExecutionEvent;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.test.context.support.WithUserDetails;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.containsString;
@@ -68,6 +72,8 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     private Student student1;
     private Student student2;
     private User manager;
+    private User admin;
+    private Role adminRole;
 
     @BeforeEach
     void setUp() {
@@ -92,6 +98,23 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
                     newRole.setName(RoleName.MANAGER);
                     return roleRepository.save(newRole);
                 });
+
+        adminRole = roleRepository.findByName(RoleName.ADMIN)
+                .orElseGet(() -> {
+                    Role newRole = new Role();
+                    newRole.setName(RoleName.ADMIN);
+                    return roleRepository.save(newRole);
+                });
+
+        admin = User.builder()
+                .email("admin@test.com")
+                .password("password")
+                .firstName("Admin")
+                .lastName("Admin")
+                .role(adminRole)
+                .build();
+
+        userRepository.save(admin);
 
         testCourse = courseRepository.save(Course.builder()
                 .title("Java for Test")
@@ -161,7 +184,14 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
                 .students(new HashSet<>())
                 .build();
         studyGroupRepository.saveAll(List.of(group1, group2, group3));
+    }
 
+    @AfterEach
+    void tearDown() {
+        studyGroupRepository.deleteAllInBatch();
+        studentRepository.deleteAllInBatch();
+        userRepository.deleteAllInBatch();
+        courseRepository.deleteAllInBatch();
     }
 
     @Test
@@ -254,7 +284,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN")
+    @WithMockUser(username = "admin@test.com", roles = "ADMIN")
     @DisplayName("Список без фильтров — должен вернуть все группы (3)")
     void getAllStudyGroups_noFilters_shouldReturnAllGroups() throws Exception {
         mockMvc.perform(get("/api/v1/groups")
@@ -265,7 +295,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
 
 
     @Test
-    @WithMockUser(roles = "ADMIN")
+    @WithMockUser(username = "admin@test.com", roles = "ADMIN")
     @DisplayName("Фильтр по courseId — должен вернуть только группы курса Java Core")
     void getAllStudyGroups_filterByCourseId_shouldReturnOnlyMatchingGroups() throws Exception {
         mockMvc.perform(get("/api/v1/groups")
@@ -280,11 +310,10 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
                                 )
                         )
                 ));
-
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN")
+    @WithMockUser(username = "admin@test.com", roles = "ADMIN")
     @DisplayName("Фильтр по status ACTIVE — должен вернуть только активные группы")
     void getAllStudyGroups_filterByStatusActive_shouldReturnOnlyActiveGroups() throws Exception {
         mockMvc.perform(get("/api/v1/groups")
@@ -296,12 +325,13 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN")
+    @WithMockUser(username = "admin@test.com", roles = "ADMIN")
     @DisplayName("Пагинация: page=0&size=2 — должен вернуть 2 группы")
     void getAllStudyGroups_pagination_shouldReturnPageWith2Groups() throws Exception {
         mockMvc.perform(get("/api/v1/groups")
                         .param("page", "0")
                         .param("size", "2")
+                        .param("sort", "id,asc")
                         .contentType(APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(3))
@@ -309,12 +339,15 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     }
 
     @Test
-    @WithMockUser(roles = "TEACHER")
-    @DisplayName("TEACHER не может видеть список групп — 403")
-    void getAllStudyGroups_withTeacherRole_shouldReturn403() throws Exception {
+    @WithUserDetails(
+            value = "teacher@test.com",
+            setupBefore = TestExecutionEvent.TEST_EXECUTION
+    )
+    @DisplayName("TEACHER может видеть список своих групп — 200")
+    void getAllStudyGroups_withTeacherRole_shouldReturn200() throws Exception {
         mockMvc.perform(get("/api/v1/groups")
                         .contentType(APPLICATION_JSON))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isOk());
     }
 
     @Test

@@ -11,7 +11,8 @@ import com.covenantcode.crm.entity.User;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
-@Mapper(componentModel = "spring")
+
+@Mapper
 public interface StudyGroupMapper {
 
     StudyGroupResponse toResponse(StudyGroup group);

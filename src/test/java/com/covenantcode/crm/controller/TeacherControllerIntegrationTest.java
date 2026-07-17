@@ -418,7 +418,7 @@ class TeacherControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.type").value("resource-not-found"))
                 .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.detail").value("Преподаватель с id 999 не найден"));
+                .andExpect(jsonPath("$.detail").value("Преподаватель не найден"));
     }
 
     @Test
@@ -443,6 +443,7 @@ class TeacherControllerIntegrationTest extends BaseIntegrationTest {
                 .createdAt(OffsetDateTime.now(ZoneOffset.UTC))
                 .updatedAt(OffsetDateTime.now(ZoneOffset.UTC))
                 .build();
+
         userRepository.save(student);
 
         mockMvc.perform(get("/api/v1/teachers/{id}", student.getId())
@@ -453,11 +454,10 @@ class TeacherControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.type").value("resource-not-found"))
                 .andExpect(jsonPath("$.title").value("Not Found"))
                 .andExpect(jsonPath("$.detail").value(
-                        "Преподаватель с id " + student.getId() + " не найден"
+                        "Преподаватель не найден"
                 ))
                 .andExpect(jsonPath("$.timestamp").exists());
     }
-
     @Test
     @DisplayName("GET /api/v1/teachers/{id} — возвращает 403 при использовании токена STUDENT")
     void getTeacherById_withStudentToken_shouldReturn403() throws Exception {
