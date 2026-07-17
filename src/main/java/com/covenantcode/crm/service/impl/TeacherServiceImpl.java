@@ -7,6 +7,7 @@ import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.RoleName;
 import com.covenantcode.crm.exception.ConflictException;
+import com.covenantcode.crm.exception.ForbiddenException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.TeacherMapper;
 import com.covenantcode.crm.repository.RoleRepository;
@@ -14,6 +15,8 @@ import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.TeacherSpecifications;
 import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.service.TeacherService;
+import com.covenantcode.crm.utils.CurrentUserProvider;
+import com.covenantcode.crm.utils.Utils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,8 +24,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
-
 
 @Service
 @RequiredArgsConstructor
@@ -34,13 +35,21 @@ public class TeacherServiceImpl implements TeacherService {
     private final PasswordEncoder passwordEncoder;
     private final StudyGroupRepository studyGroupRepository;
 
-    @Override
-    @Transactional(readOnly = true)
-    public Page<TeacherResponse> getAll(String search, Pageable pageable) {
-        Specification<User> spec = TeacherSpecifications.hasRole(RoleName.TEACHER);
+    private final CurrentUserProvider currentUserProvider;
 
-        if (StringUtils.hasText(search)) {
-            spec = spec.and(TeacherSpecifications.searchByText(search));
+    @Transactional(readOnly = true)
+    @Override
+    public Page<TeacherResponse> getAll(
+            String search,
+            Pageable pageable
+    ) {
+        User currentUser = currentUserProvider.getCurrentUser();
+
+        Specification<User> spec = Specification.where(TeacherSpecifications.hasTeacherRole())
+                .and(TeacherSpecifications.searchByText(search));
+
+        if (currentUser.getRole().getName() == RoleName.TEACHER) {
+            spec = spec.and(TeacherSpecifications.teachesSameCoursesAs(currentUser.getId()));
         }
 
         return userRepository.findAll(spec, pageable)
@@ -76,7 +85,7 @@ public class TeacherServiceImpl implements TeacherService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Преподаватель с id " + id + " не найден"));
 
-        if (user.getRole() == null || !RoleName.TEACHER.equals(user.getRole().getName())) {
+        if (!Utils.isOnlyTeacher(user)) {
             throw new ResourceNotFoundException("Преподаватель с id " + id + " не найден");
         }
 
@@ -90,16 +99,27 @@ public class TeacherServiceImpl implements TeacherService {
         userRepository.delete(user);
     }
 
-    @Override
     @Transactional(readOnly = true)
-    public TeacherResponse getById(Long id) {
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Преподаватель с id " + id + " не найден"));
+    @Override
+    public TeacherResponse getById(
+            Long id
+    ) {
 
-        if (user.getRole().getName() != RoleName.TEACHER) {
-            throw new ResourceNotFoundException("Преподаватель с id " + id + " не найден");
+        User currentUser = currentUserProvider.getCurrentUser();
+
+        if (currentUser.getRole().getName() == RoleName.TEACHER
+                && !currentUser.getId().equals(id)) {
+            throw new ForbiddenException("Вы можете просматривать только свою карточку");
         }
-        return teacherMapper.toResponse(user);
+
+        User teacher = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Преподаватель не найден"));
+
+        if (teacher.getRole().getName() != RoleName.TEACHER) {
+            throw new ResourceNotFoundException("Преподаватель не найден");
+        }
+
+        return teacherMapper.toResponse(teacher);
     }
 
     @Override

@@ -7,24 +7,16 @@ import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.RoleName;
 import com.covenantcode.crm.exception.ConflictException;
+import com.covenantcode.crm.exception.ForbiddenException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.TeacherMapper;
 import com.covenantcode.crm.repository.RoleRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
-import jakarta.persistence.criteria.CriteriaBuilder;
-import jakarta.persistence.criteria.CriteriaQuery;
-import jakarta.persistence.criteria.Expression;
-import jakarta.persistence.criteria.Path;
-import jakarta.persistence.criteria.Predicate;
-import jakarta.persistence.criteria.Root;
-import java.util.Optional;
+import com.covenantcode.crm.utils.CurrentUserProvider;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -32,40 +24,33 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 
-import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.assertj.core.api.Assertions.assertThat;
 
 @ExtendWith(MockitoExtension.class)
-public class TeacherServiceImplTest {
+class TeacherServiceImplTest {
 
     @Mock
     private UserRepository userRepository;
 
     @Mock
     private TeacherMapper teacherMapper;
-
-    @InjectMocks
-    private TeacherServiceImpl teacherService;
-
-    @Captor
-    private ArgumentCaptor<Specification<User>> specCaptor;
 
     @Mock
     private RoleRepository roleRepository;
@@ -76,451 +61,476 @@ public class TeacherServiceImplTest {
     @Mock
     private StudyGroupRepository studyGroupRepository;
 
-    private User testUser;
-    private TeacherResponse testResponse;
-    private Pageable defaultPageable;
-    private TeacherCreateRequest request;
+    @InjectMocks
+    private TeacherServiceImpl teacherService;
 
+    @Mock
+    private CurrentUserProvider currentUserProvider;
+
+    private Role teacherRole;
+    private Role adminRole;
+    private User teacher;
+    private User anotherTeacher;
+    private User admin;
+    private TeacherResponse teacherResponse;
 
     @BeforeEach
     void setUp() {
-        Role teacherRole = new Role();
-        teacherRole.setId(1L);
-        teacherRole.setName(RoleName.TEACHER);
-
-        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-
-        testUser = User.builder()
-                .id(1L)
-                .firstName("Иван")
-                .lastName("Петров")
-                .email("ivan.petrov@example.com")
-                .phone("+79161234567")
-                .enabled(true)
-                .password("encoded_password")
-                .role(teacherRole)
-                .createdAt(now)
-                .updatedAt(now)
-                .build();
-
-        request = TeacherCreateRequest.builder()
-                .firstName("Иван")
-                .lastName("Петров")
-                .email("ivan.petrov@example.com")
-                .password("secure1234")
-                .phone("+79161234567")
-                .build();
-
-        testResponse = TeacherResponse.builder()
-                .id(1L)
-                .firstName("Иван")
-                .lastName("Петров")
-                .email("ivan.petrov@example.com")
-                .phone("+79161234567")
-                .enabled(true)
-                .createdAt(now.toLocalDateTime())
-                .build();
-
-        defaultPageable = PageRequest.of(0, 20, Sort.by("lastName"));
-    }
-
-    @Test
-    @DisplayName("getAll без search — фильтрует только по роли TEACHER")
-    void getAll_withoutSearch_filtersByTeacherRole() {
-        Page<User> userPage = new PageImpl<>(List.of(testUser), defaultPageable, 1);
-
-        when(userRepository.findAll(any(Specification.class), eq(defaultPageable)))
-                .thenReturn(userPage);
-        when(teacherMapper.toResponse(testUser)).thenReturn(testResponse);
-
-        Page<TeacherResponse> result = teacherService.getAll(null, defaultPageable);
-
-        assertThat(result.getContent())
-                .hasSize(1)
-                .containsExactly(testResponse);
-        assertThat(result.getTotalElements()).isEqualTo(1);
-        assertThat(result.getTotalPages()).isEqualTo(1);
-
-        verify(userRepository).findAll(specCaptor.capture(), eq(defaultPageable));
-
-        Specification<User> capturedSpec = specCaptor.getValue();
-        assertThat(capturedSpec).isNotNull();
-        assertRoleFilterApplied(capturedSpec);
-
-        verify(teacherMapper, times(1)).toResponse(testUser);
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private void assertRoleFilterApplied(Specification<User> spec) {
-        Root<User> root = mock(Root.class);
-        CriteriaQuery<?> query = mock(CriteriaQuery.class);
-        CriteriaBuilder cb = mock(CriteriaBuilder.class);
-
-        Path<Object> userRolePath = mock(Path.class);
-        Path<RoleName> roleNamePath = mock(Path.class);
-
-        when(root.get("role")).thenReturn(userRolePath);
-        when(userRolePath.<RoleName>get("name")).thenReturn(roleNamePath);
-
-        Predicate rolePredicate = mock(Predicate.class);
-        when(cb.equal(roleNamePath, RoleName.TEACHER)).thenReturn(rolePredicate);
-
-        Predicate result = spec.toPredicate((Root) root, query, cb);
-
-        assertThat(result).isEqualTo(rolePredicate);
-
-        verify(cb).equal(roleNamePath, RoleName.TEACHER);
-    }
-
-    @Test
-    @DisplayName("getAll с search — фильтрует по роли TEACHER И по тексту в firstName/lastName/email")
-    void getAll_withSearch_filtersByRoleAndText() {
-        String search = "алекс";
-        Pageable pageable = PageRequest.of(0, 20, Sort.by("lastName"));
-
-        Role teacherRole = Role.builder()
+        teacherRole = Role.builder()
                 .id(1L)
                 .name(RoleName.TEACHER)
                 .build();
 
-        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-
-        User user = User.builder()
+        adminRole = Role.builder()
                 .id(2L)
-                .firstName("Aleksey")
-                .lastName("Sidorov")
-                .email("aleksey.sidorov@example.com")
-                .phone("+79161234568")
+                .name(RoleName.ADMIN)
+                .build();
+
+        teacher = User.builder()
+                .id(1L)
+                .firstName("Ivan")
+                .lastName("Ivanov")
+                .email("teacher@test.com")
+                .phone("+998901111111")
+                .password("encoded-password")
                 .enabled(true)
-                .password("encoded_password")
                 .role(teacherRole)
-                .createdAt(now)
-                .updatedAt(now)
                 .build();
 
-        Page<User> userPage = new PageImpl<>(List.of(user), pageable, 1);
-
-        TeacherResponse response = TeacherResponse.builder()
+        anotherTeacher = User.builder()
                 .id(2L)
-                .firstName("Aleksey")
-                .lastName("Sidorov")
-                .email("aleksey.sidorov@example.com")
-                .phone("+79161234568")
+                .firstName("Petr")
+                .lastName("Petrov")
+                .email("another.teacher@test.com")
+                .phone("+998902222222")
+                .password("encoded-password")
                 .enabled(true)
-                .createdAt(now.toLocalDateTime())
+                .role(teacherRole)
                 .build();
 
-        when(userRepository.findAll(any(Specification.class), eq(pageable)))
-                .thenReturn(userPage);
-        when(teacherMapper.toResponse(user)).thenReturn(response);
+        admin = User.builder()
+                .id(10L)
+                .firstName("Admin")
+                .lastName("Adminov")
+                .email("admin@test.com")
+                .phone("+998909999999")
+                .password("encoded-password")
+                .enabled(true)
+                .role(adminRole)
+                .build();
 
-        Page<TeacherResponse> result = teacherService.getAll(search, pageable);
-
-        assertThat(result.getContent()).hasSize(1);
-        assertThat(result.getContent().get(0)).isEqualTo(response);
-
-        verify(userRepository).findAll(specCaptor.capture(), eq(pageable));
-        verify(teacherMapper).toResponse(user);
-
-        Specification<User> capturedSpec = specCaptor.getValue();
-        assertThat(capturedSpec).isNotNull();
-
-        assertRoleAndTextFilterApplied(capturedSpec, search);
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private void assertRoleAndTextFilterApplied(Specification<User> spec, String search) {
-        Root<User> root = mock(Root.class);
-        CriteriaQuery<?> query = mock(CriteriaQuery.class);
-        CriteriaBuilder cb = mock(CriteriaBuilder.class);
-
-        Path<Object> userRolePath = mock(Path.class);
-        Path<RoleName> roleNamePath = mock(Path.class);
-
-        when(root.get("role")).thenReturn(userRolePath);
-        when(userRolePath.<RoleName>get("name")).thenReturn(roleNamePath);
-
-        Predicate rolePredicate = mock(Predicate.class);
-        when(cb.equal(roleNamePath, RoleName.TEACHER)).thenReturn(rolePredicate);
-
-        Path<String> firstNamePath = mock(Path.class);
-        Path<String> lastNamePath = mock(Path.class);
-        Path<String> emailPath = mock(Path.class);
-
-        Expression<String> firstNameLower = mock(Expression.class);
-        Expression<String> lastNameLower = mock(Expression.class);
-        Expression<String> emailLower = mock(Expression.class);
-
-        doReturn(firstNamePath).when(root).get("firstName");
-        doReturn(lastNamePath).when(root).get("lastName");
-        doReturn(emailPath).when(root).get("email");
-
-        doReturn(firstNameLower).when(cb).lower(firstNamePath);
-        doReturn(lastNameLower).when(cb).lower(lastNamePath);
-        doReturn(emailLower).when(cb).lower(emailPath);
-
-        String expectedPattern = "%" + search.trim().toLowerCase() + "%";
-
-        Predicate firstNameLike = mock(Predicate.class);
-        Predicate lastNameLike = mock(Predicate.class);
-        Predicate emailLike = mock(Predicate.class);
-
-        doReturn(firstNameLike).when(cb).like(firstNameLower, expectedPattern);
-        doReturn(lastNameLike).when(cb).like(lastNameLower, expectedPattern);
-        doReturn(emailLike).when(cb).like(emailLower, expectedPattern);
-
-        Predicate textPredicate = mock(Predicate.class);
-        doReturn(textPredicate).when(cb).or(firstNameLike, lastNameLike, emailLike);
-
-        Predicate combinedPredicate = mock(Predicate.class);
-        doReturn(combinedPredicate).when(cb).and(rolePredicate, textPredicate);
-
-        Predicate result = spec.toPredicate(root, query, cb);
-
-        assertThat(result).isEqualTo(combinedPredicate);
-
-        verify(cb).equal(roleNamePath, RoleName.TEACHER);
-
-        verify(cb).lower(firstNamePath);
-        verify(cb).lower(lastNamePath);
-        verify(cb).lower(emailPath);
-
-        verify(cb).like(firstNameLower, expectedPattern);
-        verify(cb).like(lastNameLower, expectedPattern);
-        verify(cb).like(emailLower, expectedPattern);
-
-        verify(cb).or(firstNameLike, lastNameLike, emailLike);
-        verify(cb).and(rolePredicate, textPredicate);
+        teacherResponse = TeacherResponse.builder()
+                .id(1L)
+                .firstName("Ivan")
+                .lastName("Ivanov")
+                .email("teacher@test.com")
+                .phone("+998901111111")
+                .enabled(true)
+                .build();
     }
 
     @Test
-    @DisplayName("create — успешное создание преподавателя")
-    void create_success_returnsTeacherResponse() {
+    void getAll_shouldReturnTeachersForAdmin() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<User> usersPage = new PageImpl<>(List.of(teacher), pageable, 1);
+
+        when(currentUserProvider.getCurrentUser()).thenReturn(admin);
+        when(userRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(usersPage);
+        when(teacherMapper.toResponse(teacher)).thenReturn(teacherResponse);
+
+        Page<TeacherResponse> result = teacherService.getAll(null, pageable);
+
+        assertNotNull(result);
+        assertEquals(1, result.getTotalElements());
+        assertEquals(teacherResponse, result.getContent().get(0));
+
+        verify(currentUserProvider).getCurrentUser();
+        verify(userRepository).findAll(any(Specification.class), eq(pageable));
+        verify(teacherMapper).toResponse(teacher);
+    }
+
+    @Test
+    void getAll_shouldReturnFilteredTeachersForTeacher() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<User> usersPage = new PageImpl<>(List.of(teacher), pageable, 1);
+
+        when(currentUserProvider.getCurrentUser()).thenReturn(teacher);
+        when(userRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(usersPage);
+        when(teacherMapper.toResponse(teacher)).thenReturn(teacherResponse);
+
+        Page<TeacherResponse> result = teacherService.getAll("Ivan", pageable);
+
+        assertNotNull(result);
+        assertEquals(1, result.getTotalElements());
+        assertEquals(teacherResponse, result.getContent().get(0));
+
+        verify(currentUserProvider).getCurrentUser();
+        verify(userRepository).findAll(any(Specification.class), eq(pageable));
+        verify(teacherMapper).toResponse(teacher);
+    }
+
+    @Test
+    void getAll_shouldThrowResourceNotFoundException_whenCurrentUserNotFound() {
+        Pageable pageable = PageRequest.of(0, 10);
+
+        when(currentUserProvider.getCurrentUser())
+                .thenThrow(new ResourceNotFoundException("Текущий пользователь не найден"));
+
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> teacherService.getAll(null, pageable)
+        );
+
+        verify(currentUserProvider).getCurrentUser();
+        verify(userRepository, never()).findAll(any(Specification.class), eq(pageable));
+    }
+
+    @Test
+    void create_shouldCreateTeacher() {
+        TeacherCreateRequest request = TeacherCreateRequest.builder()
+                .firstName("Ivan")
+                .lastName("Ivanov")
+                .email("teacher@test.com")
+                .phone("+998901111111")
+                .password("password")
+                .build();
+
         when(userRepository.existsByEmail(request.getEmail())).thenReturn(false);
-        when(roleRepository.findByName(RoleName.TEACHER)).thenReturn(Optional.of(testUser.getRole()));
-        when(passwordEncoder.encode(request.getPassword())).thenReturn("encodedPassword");
-        when(userRepository.saveAndFlush(any(User.class))).thenReturn(testUser);
-        when(teacherMapper.toResponse(testUser)).thenReturn(testResponse);
+        when(roleRepository.findByName(RoleName.TEACHER)).thenReturn(Optional.of(teacherRole));
+        when(passwordEncoder.encode(request.getPassword())).thenReturn("encoded-password");
+        when(userRepository.saveAndFlush(any(User.class))).thenReturn(teacher);
+        when(teacherMapper.toResponse(teacher)).thenReturn(teacherResponse);
 
         TeacherResponse result = teacherService.create(request);
 
-        assertThat(result).isEqualTo(testResponse);
+        assertNotNull(result);
+        assertEquals(teacherResponse, result);
+
+        verify(userRepository).existsByEmail(request.getEmail());
+        verify(roleRepository).findByName(RoleName.TEACHER);
         verify(passwordEncoder).encode(request.getPassword());
-
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).saveAndFlush(userCaptor.capture());
-        User capturedUser = userCaptor.getValue();
-
-        assertThat(capturedUser.getFirstName()).isEqualTo(request.getFirstName());
-        assertThat(capturedUser.getLastName()).isEqualTo(request.getLastName());
-        assertThat(capturedUser.getEmail()).isEqualTo(request.getEmail());
-        assertThat(capturedUser.getPhone()).isEqualTo(request.getPhone());
-        assertThat(capturedUser.getPassword()).isEqualTo("encodedPassword");
-        assertThat(capturedUser.isEnabled()).isTrue();
-        assertThat(capturedUser.getRole()).isEqualTo(testUser.getRole());
+        verify(userRepository).saveAndFlush(any(User.class));
+        verify(teacherMapper).toResponse(teacher);
     }
 
     @Test
-    @DisplayName("create — выбрасывает ConflictException при уже существующем email")
-    void create_throwsConflictException_whenEmailExists() {
+    void create_shouldThrowConflictException_whenEmailAlreadyExists() {
+        TeacherCreateRequest request = TeacherCreateRequest.builder()
+                .firstName("Ivan")
+                .lastName("Ivanov")
+                .email("teacher@test.com")
+                .phone("+998901111111")
+                .password("password")
+                .build();
+
         when(userRepository.existsByEmail(request.getEmail())).thenReturn(true);
 
-        assertThatThrownBy(() -> teacherService.create(request))
-                .isInstanceOf(ConflictException.class)
-                .hasMessageContaining("Пользователь с email " + request.getEmail() + " уже существует");
+        assertThrows(
+                ConflictException.class,
+                () -> teacherService.create(request)
+        );
 
+        verify(userRepository).existsByEmail(request.getEmail());
         verify(roleRepository, never()).findByName(any());
-        verify(passwordEncoder, never()).encode(any());
-        verify(userRepository, never()).saveAndFlush(any());
-        verify(teacherMapper, never()).toResponse(any());
+        verify(passwordEncoder, never()).encode(anyString());
+        verify(userRepository, never()).saveAndFlush(any(User.class));
     }
 
     @Test
-    @DisplayName("delete — успешное удаление, userRepository.delete вызван")
-    void deleteSuccess_shouldCallRepositoryDelete() {
-        Long teacherId = testUser.getId();
-        when(userRepository.findById(teacherId)).thenReturn(Optional.of(testUser));
-        when(studyGroupRepository.countByTeacherId(teacherId)).thenReturn(0L);
+    void create_shouldThrowResourceNotFoundException_whenTeacherRoleNotFound() {
+        TeacherCreateRequest request = TeacherCreateRequest.builder()
+                .firstName("Ivan")
+                .lastName("Ivanov")
+                .email("teacher@test.com")
+                .phone("+998901111111")
+                .password("password")
+                .build();
 
-        teacherService.delete(teacherId);
+        when(userRepository.existsByEmail(request.getEmail())).thenReturn(false);
+        when(roleRepository.findByName(RoleName.TEACHER)).thenReturn(Optional.empty());
 
-        verify(studyGroupRepository, times(1)).countByTeacherId(teacherId);
-        verify(userRepository, times(1)).delete(testUser);
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> teacherService.create(request)
+        );
+
+        verify(userRepository).existsByEmail(request.getEmail());
+        verify(roleRepository).findByName(RoleName.TEACHER);
+        verify(passwordEncoder, never()).encode(anyString());
+        verify(userRepository, never()).saveAndFlush(any(User.class));
     }
 
     @Test
-    @DisplayName("delete — преподаватель не найден, выбрасывается ResourceNotFoundException")
-    void delete_teacherNotFound_shouldThrowResourceNotFoundException() {
-        Long nonExistentId = 999L;
-        when(userRepository.findById(nonExistentId)).thenReturn(Optional.empty());
+    void delete_shouldDeleteTeacher() {
+        when(userRepository.findById(teacher.getId())).thenReturn(Optional.of(teacher));
+        when(studyGroupRepository.countByTeacherId(teacher.getId())).thenReturn(0L);
 
-        assertThatThrownBy(() -> teacherService.delete(nonExistentId))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessage("Преподаватель с id " + nonExistentId + " не найден");
+        assertDoesNotThrow(() -> teacherService.delete(teacher.getId()));
 
-        verify(studyGroupRepository, never()).countByTeacherId(anyLong());
+        verify(userRepository).findById(teacher.getId());
+        verify(studyGroupRepository).countByTeacherId(teacher.getId());
+        verify(userRepository).delete(teacher);
+    }
+
+    @Test
+    void delete_shouldThrowResourceNotFoundException_whenUserNotFound() {
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> teacherService.delete(999L)
+        );
+
+        verify(userRepository).findById(999L);
+        verify(studyGroupRepository, never()).countByTeacherId(any());
         verify(userRepository, never()).delete(any(User.class));
     }
 
     @Test
-    @DisplayName("delete — у преподавателя есть группы, выбрасывается ConflictException")
-    void delete_teacherHasGroups_shouldThrowConflictException() {
-        Long teacherId = testUser.getId();
-        long groupCount = 3L;
-        when(userRepository.findById(teacherId)).thenReturn(Optional.of(testUser));
-        when(studyGroupRepository.countByTeacherId(teacherId)).thenReturn(groupCount);
+    void delete_shouldThrowResourceNotFoundException_whenUserIsNotTeacher() {
+        when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
 
-        assertThatThrownBy(() -> teacherService.delete(teacherId))
-                .isInstanceOf(ConflictException.class)
-                .hasMessage(String.format(
-                        "Невозможно удалить преподавателя: у него %d групп(ы). Сначала переназначьте группы.",
-                        groupCount
-                ));
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> teacherService.delete(admin.getId())
+        );
 
-        verify(studyGroupRepository, times(1)).countByTeacherId(teacherId);
+        verify(userRepository).findById(admin.getId());
+        verify(studyGroupRepository, never()).countByTeacherId(any());
         verify(userRepository, never()).delete(any(User.class));
     }
 
     @Test
-    @DisplayName("getById — успешное получение преподавателя")
-    void getById_whenTeacherExists_returnsTeacherResponse() {
+    void delete_shouldThrowConflictException_whenTeacherHasGroups() {
+        when(userRepository.findById(teacher.getId())).thenReturn(Optional.of(teacher));
+        when(studyGroupRepository.countByTeacherId(teacher.getId())).thenReturn(2L);
 
-        Long teacherId = 1L;
-        when(userRepository.findById(teacherId)).thenReturn(Optional.of(testUser));
-        when(teacherMapper.toResponse(testUser)).thenReturn(testResponse);
+        assertThrows(
+                ConflictException.class,
+                () -> teacherService.delete(teacher.getId())
+        );
 
-        TeacherResponse response = teacherService.getById(teacherId);
-
-        assertThat(response).isEqualTo(testResponse);
-        verify(userRepository).findById(teacherId);
-        verify(teacherMapper).toResponse(testUser);
+        verify(userRepository).findById(teacher.getId());
+        verify(studyGroupRepository).countByTeacherId(teacher.getId());
+        verify(userRepository, never()).delete(any(User.class));
     }
 
     @Test
-    @DisplayName("getById — пользователь не найден")
-    void getById_whenUserNotFound_throwsResourceNotFoundException() {
+    void getById_shouldReturnTeacherForAdmin() {
+        when(currentUserProvider.getCurrentUser()).thenReturn(admin);
+        when(userRepository.findById(teacher.getId())).thenReturn(Optional.of(teacher));
+        when(teacherMapper.toResponse(teacher)).thenReturn(teacherResponse);
 
-        Long nonExistentId = 999L;
-        when(userRepository.findById(nonExistentId)).thenReturn(Optional.empty());
+        TeacherResponse result = teacherService.getById(teacher.getId());
 
-        assertThatThrownBy(() -> teacherService.getById(nonExistentId))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessage("Преподаватель с id " + nonExistentId + " не найден");
+        assertNotNull(result);
+        assertEquals(teacherResponse, result);
 
-        verify(userRepository).findById(nonExistentId);
-        verify(teacherMapper, never()).toResponse(any());
+        verify(currentUserProvider).getCurrentUser();
+        verify(userRepository).findById(teacher.getId());
+        verify(teacherMapper).toResponse(teacher);
     }
 
     @Test
-    @DisplayName("getById — пользователь найден, но не TEACHER")
-    void getById_whenUserIsNotTeacher_throwsResourceNotFoundException() {
+    void getById_shouldReturnOwnTeacherCardForTeacher() {
+        when(currentUserProvider.getCurrentUser()).thenReturn(teacher);
+        when(userRepository.findById(teacher.getId())).thenReturn(Optional.of(teacher));
+        when(teacherMapper.toResponse(teacher)).thenReturn(teacherResponse);
 
-        Long nonTeacherId = 2L;
-        Role studentRole = new Role();
-        studentRole.setName(RoleName.STUDENT);
+        TeacherResponse result = teacherService.getById(teacher.getId());
 
-        User nonTeacherUser = User.builder()
-                .id(nonTeacherId)
-                .firstName("Алексей")
-                .lastName("Сидоров")
-                .email("student@example.com")
-                .role(studentRole)
+        assertNotNull(result);
+        assertEquals(teacherResponse, result);
+
+        verify(currentUserProvider).getCurrentUser();
+        verify(userRepository).findById(teacher.getId());
+        verify(teacherMapper).toResponse(teacher);
+    }
+
+    @Test
+    void getById_shouldThrowForbiddenException_whenTeacherRequestsAnotherTeacherCard() {
+        when(currentUserProvider.getCurrentUser()).thenReturn(teacher);
+
+        assertThrows(
+                ForbiddenException.class,
+                () -> teacherService.getById(anotherTeacher.getId())
+        );
+
+        verify(currentUserProvider).getCurrentUser();
+        verify(userRepository, never()).findById(anotherTeacher.getId());
+        verify(teacherMapper, never()).toResponse(any(User.class));
+    }
+
+    @Test
+    void getById_shouldThrowResourceNotFoundException_whenCurrentUserNotFound() {
+        when(currentUserProvider.getCurrentUser())
+                .thenThrow(new ResourceNotFoundException("Текущий пользователь не найден"));
+
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> teacherService.getById(teacher.getId())
+        );
+
+        verify(currentUserProvider).getCurrentUser();
+        verify(userRepository, never()).findById(any());
+        verify(teacherMapper, never()).toResponse(any(User.class));
+    }
+
+    @Test
+    void getById_shouldThrowResourceNotFoundException_whenTeacherNotFound() {
+        when(currentUserProvider.getCurrentUser()).thenReturn(admin);
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> teacherService.getById(999L)
+        );
+
+        verify(currentUserProvider).getCurrentUser();
+        verify(userRepository).findById(999L);
+        verify(teacherMapper, never()).toResponse(any(User.class));
+    }
+
+    @Test
+    void getById_shouldThrowResourceNotFoundException_whenFoundUserIsNotTeacher() {
+        User manager = User.builder()
+                .id(20L)
+                .firstName("Manager")
+                .lastName("Managerov")
+                .email("manager@test.com")
+                .enabled(true)
+                .role(adminRole)
                 .build();
 
-        when(userRepository.findById(nonTeacherId)).thenReturn(Optional.of(nonTeacherUser));
+        when(currentUserProvider.getCurrentUser()).thenReturn(admin);
+        when(userRepository.findById(manager.getId())).thenReturn(Optional.of(manager));
 
-        assertThatThrownBy(() -> teacherService.getById(nonTeacherId))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessage("Преподаватель с id " + nonTeacherId + " не найден");
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> teacherService.getById(manager.getId())
+        );
 
-        verify(userRepository).findById(nonTeacherId);
-        verify(teacherMapper, never()).toResponse(any());
+        verify(currentUserProvider).getCurrentUser();
+        verify(userRepository).findById(manager.getId());
+        verify(teacherMapper, never()).toResponse(any(User.class));
     }
 
     @Test
-    @DisplayName("update — успешное обновление профиля, поля изменились")
-    void update_Success_FieldsChanged() {
-
-        Long teacherId = 1L;
-        TeacherUpdateRequest updateRequest = TeacherUpdateRequest.builder()
-                .firstName("Алексей")
-                .lastName("Смирнов")
-                .phone("+79169999999")
+    void update_shouldUpdateTeacher() {
+        TeacherUpdateRequest request = TeacherUpdateRequest.builder()
+                .firstName("Updated")
+                .lastName("Teacher")
+                .phone("+998903333333")
                 .build();
 
-        when(userRepository.findById(teacherId)).thenReturn(Optional.of(testUser));
-        when(userRepository.saveAndFlush(any(User.class))).thenReturn(testUser);
-        when(teacherMapper.toResponse(testUser)).thenReturn(testResponse);
-
-        TeacherResponse result = teacherService.update(teacherId, updateRequest);
-
-        assertThat(result).isEqualTo(testResponse);
-
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).saveAndFlush(userCaptor.capture());
-        User capturedUser = userCaptor.getValue();
-
-        assertThat(capturedUser.getFirstName()).isEqualTo("Алексей");
-        assertThat(capturedUser.getLastName()).isEqualTo("Смирнов");
-        assertThat(capturedUser.getPhone()).isEqualTo("+79169999999");
-    }
-
-    @Test
-    @DisplayName("update — для несуществующего ID выбрасывает ResourceNotFoundException")
-    void update_NotFound_ThrowsResourceNotFoundException() {
-
-        Long nonExistentId = 999L;
-        TeacherUpdateRequest updateRequest = TeacherUpdateRequest.builder()
-                .firstName("Алексей")
-                .lastName("Смирнов")
+        TeacherResponse updatedResponse = TeacherResponse.builder()
+                .id(teacher.getId())
+                .firstName("Updated")
+                .lastName("Teacher")
+                .email(teacher.getEmail())
+                .phone("+998903333333")
+                .enabled(true)
                 .build();
 
-        when(userRepository.findById(nonExistentId)).thenReturn(Optional.empty());
+        when(userRepository.findById(teacher.getId())).thenReturn(Optional.of(teacher));
+        when(userRepository.saveAndFlush(teacher)).thenReturn(teacher);
+        when(teacherMapper.toResponse(teacher)).thenReturn(updatedResponse);
 
-        assertThatThrownBy(() -> teacherService.update(nonExistentId, updateRequest))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessage("Преподаватель с id " + nonExistentId + " не найден");
+        TeacherResponse result = teacherService.update(teacher.getId(), request);
 
-        verify(userRepository).findById(nonExistentId);
-        verify(userRepository, never()).saveAndFlush(any());
+        assertNotNull(result);
+        assertEquals(updatedResponse, result);
+        assertEquals("Updated", teacher.getFirstName());
+        assertEquals("Teacher", teacher.getLastName());
+        assertEquals("+998903333333", teacher.getPhone());
+
+        verify(userRepository).findById(teacher.getId());
+        verify(userRepository).saveAndFlush(teacher);
+        verify(teacherMapper).toResponse(teacher);
     }
 
     @Test
-    @DisplayName("setEnabled — успешная блокировка, enabled = false")
-    void setEnabled_Success_EnabledFalse() {
+    void update_shouldThrowResourceNotFoundException_whenUserNotFound() {
+        TeacherUpdateRequest request = TeacherUpdateRequest.builder()
+                .firstName("Updated")
+                .lastName("Teacher")
+                .phone("+998903333333")
+                .build();
 
-        Long teacherId = 1L;
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
 
-        when(userRepository.findById(teacherId)).thenReturn(Optional.of(testUser));
-        when(userRepository.saveAndFlush(any(User.class))).thenReturn(testUser);
-        when(teacherMapper.toResponse(testUser)).thenReturn(testResponse);
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> teacherService.update(999L, request)
+        );
 
-        TeacherResponse result = teacherService.setEnabled(teacherId, false);
-
-        assertThat(result).isEqualTo(testResponse);
-
-        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).saveAndFlush(userCaptor.capture());
-        User capturedUser = userCaptor.getValue();
-
-        assertThat(capturedUser.isEnabled()).isFalse();
+        verify(userRepository).findById(999L);
+        verify(userRepository, never()).saveAndFlush(any(User.class));
+        verify(teacherMapper, never()).toResponse(any(User.class));
     }
 
     @Test
-    @DisplayName("setEnabled — для несуществующего ID выбрасывает ResourceNotFoundException")
-    void setEnabled_NotFound_ThrowsResourceNotFoundException() {
+    void update_shouldThrowResourceNotFoundException_whenUserIsNotTeacher() {
+        TeacherUpdateRequest request = TeacherUpdateRequest.builder()
+                .firstName("Updated")
+                .lastName("Teacher")
+                .phone("+998903333333")
+                .build();
 
-        Long nonExistentId = 999L;
+        when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
 
-        when(userRepository.findById(nonExistentId)).thenReturn(Optional.empty());
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> teacherService.update(admin.getId(), request)
+        );
 
-        assertThatThrownBy(() -> teacherService.setEnabled(nonExistentId, false))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessage("Преподаватель с id " + nonExistentId + " не найден");
-
-        verify(userRepository).findById(nonExistentId);
-        verify(userRepository, never()).saveAndFlush(any());
+        verify(userRepository).findById(admin.getId());
+        verify(userRepository, never()).saveAndFlush(any(User.class));
+        verify(teacherMapper, never()).toResponse(any(User.class));
     }
 
+    @Test
+    void setEnabled_shouldSetTeacherEnabled() {
+        when(userRepository.findById(teacher.getId())).thenReturn(Optional.of(teacher));
+        when(userRepository.saveAndFlush(teacher)).thenReturn(teacher);
+        when(teacherMapper.toResponse(teacher)).thenReturn(teacherResponse);
+
+        TeacherResponse result = teacherService.setEnabled(teacher.getId(), false);
+
+        assertNotNull(result);
+        assertEquals(teacherResponse, result);
+        assertEquals(false, teacher.isEnabled());
+
+        verify(userRepository).findById(teacher.getId());
+        verify(userRepository).saveAndFlush(teacher);
+        verify(teacherMapper).toResponse(teacher);
+    }
+
+    @Test
+    void setEnabled_shouldThrowResourceNotFoundException_whenUserNotFound() {
+        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> teacherService.setEnabled(999L, true)
+        );
+
+        verify(userRepository).findById(999L);
+        verify(userRepository, never()).saveAndFlush(any(User.class));
+        verify(teacherMapper, never()).toResponse(any(User.class));
+    }
+
+    @Test
+    void setEnabled_shouldThrowResourceNotFoundException_whenUserIsNotTeacher() {
+        when(userRepository.findById(admin.getId())).thenReturn(Optional.of(admin));
+
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> teacherService.setEnabled(admin.getId(), true)
+        );
+
+        verify(userRepository).findById(admin.getId());
+        verify(userRepository, never()).saveAndFlush(any(User.class));
+        verify(teacherMapper, never()).toResponse(any(User.class));
+    }
 }
-

@@ -8,6 +8,7 @@ import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.GroupStatus;
 import com.covenantcode.crm.entity.enums.RoleName;
 import com.covenantcode.crm.exception.ConflictException;
+import com.covenantcode.crm.exception.ForbiddenException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.StudentMapper;
 import com.covenantcode.crm.repository.StudentRepository;
@@ -15,61 +16,68 @@ import com.covenantcode.crm.repository.StudentSpecifications;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.service.StudentService;
-import lombok.RequiredArgsConstructor;
+import com.covenantcode.crm.utils.CurrentUserProvider;
+import lombok.AllArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.security.access.AccessDeniedException;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
-
-import java.util.List;
-import java.util.stream.Collectors;
 
 
 @Service
-@RequiredArgsConstructor
+@AllArgsConstructor
 public class StudentServiceImpl implements StudentService {
 
     private final StudentRepository studentRepository;
     private final StudentMapper studentMapper;
-    private final UserRepository userRepository;
     private final StudyGroupRepository studyGroupRepository;
+    private final UserRepository userRepository;
+    private final CurrentUserProvider currentUserProvider;
 
-    @Override
+
     @Transactional(readOnly = true)
-    public StudentResponse getById(Long id, User currentUser) {
+    @Override
+    public StudentResponse getById(Long id) {
+        User currentUser = currentUserProvider.getCurrentUser();
 
         Student student = studentRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Student с id " + id + " не найден"));
+                .orElseThrow(() -> new ResourceNotFoundException("Студент не найден"));
 
-        RoleName roleName = currentUser.getRole().getName();
+        if (currentUser.getRole().getName() == RoleName.TEACHER) {
+            boolean allowed = studentRepository.existsByIdAndStudyGroupsTeacherId(id, currentUser.getId());
 
-        boolean isStaff = roleName == RoleName.ADMIN || roleName == RoleName.MANAGER;
-
-        boolean isOwner = student.getUser() != null &&
-                student.getUser().getId().equals(currentUser.getId());
-
-        if (isStaff || isOwner) {
-            return studentMapper.toResponse(student);
-        }
-
-        if (roleName == RoleName.TEACHER) {
-            if (studyGroupRepository.existsByTeacherAndStudentsContaining(currentUser, student)) {
-                return studentMapper.toResponse(student);
+            if (!allowed) {
+                throw new ForbiddenException("Вы можете просматривать только студентов своих групп");
             }
         }
 
-        throw new AccessDeniedException("У вас нет прав для просмотра данных этого студента");
+        if (currentUser.getRole().getName() == RoleName.STUDENT) {
+            if (student.getUser() == null || !student.getUser().getId().equals(currentUser.getId())) {
+                throw new ForbiddenException("Вы можете просматривать только свой профиль");
+            }
+        }
+
+        return studentMapper.toResponse(student);
     }
+
 
     @Override
     @Transactional(readOnly = true)
-    public List<StudentResponse> getAll() {
-        return studentRepository.findAll().stream()
-                .map(studentMapper::toResponse)
-                .collect(Collectors.toList());
+    public Page<StudentResponse> getAll(String search, Pageable pageable) {
+
+        User currentUser = currentUserProvider.getCurrentUser();
+
+
+        Specification<Student> spec = Specification.where(StudentSpecifications.searchByText(search));
+
+        if (currentUser.getRole().getName() == RoleName.TEACHER) {
+            spec = spec.and(StudentSpecifications.belongsToTeacherGroups(currentUser.getId()));
+        }
+
+        return studentRepository.findAll(spec, pageable)
+                .map(studentMapper::toResponse);
     }
 
     @Override
@@ -103,27 +111,17 @@ public class StudentServiceImpl implements StudentService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public Page<StudentResponse> getAll(String search, Pageable pageable) {
-        Specification<Student> spec = Specification.where(null);
-
-        if (StringUtils.hasText(search)) {
-            spec = spec.and(StudentSpecifications.searchByText(search));
-        }
-        return studentRepository.findAll(spec, pageable)
-                .map(studentMapper::toResponse);
-    }
-
-    @Override
     @Transactional
     public StudentResponse update(Long id, StudentUpdateRequest request) {
         Student student = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student с id " + id + " не найден"));
+
         student.setFirstName(request.getFirstName());
         student.setLastName(request.getLastName());
         student.setPhone(request.getPhone());
         student.setEmail(request.getEmail());
         student.setBirthDate(request.getBirthDate());
+
         Student savedStudent = studentRepository.save(student);
         return studentMapper.toResponse(savedStudent);
     }
@@ -131,7 +129,6 @@ public class StudentServiceImpl implements StudentService {
     @Override
     @Transactional
     public void deleteById(Long id) {
-
         Student student = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student с id " + id + " не найден"));
 

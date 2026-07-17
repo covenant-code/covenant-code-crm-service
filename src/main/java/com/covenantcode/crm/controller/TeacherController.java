@@ -28,7 +28,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 
-
 @RestController
 @RequestMapping("/api/v1/teachers")
 @RequiredArgsConstructor
@@ -47,7 +46,9 @@ public class TeacherController {
     })
     public ResponseEntity<Page<TeacherResponse>> getAll(
             @RequestParam(required = false) String search,
-            @PageableDefault(size = 20, sort = "lastName") Pageable pageable) {
+            @PageableDefault(size = 20, sort = "lastName") Pageable pageable
+    ) {
+
         return ResponseEntity.ok(teacherService.getAll(search, pageable));
     }
 
@@ -90,7 +91,9 @@ public class TeacherController {
             @ApiResponse(responseCode = "403", description = "Доступ запрещён"),
             @ApiResponse(responseCode = "404", description = "Преподаватель с id не найден")
     })
-    public ResponseEntity<TeacherResponse> getById(@PathVariable Long id) {
+    public ResponseEntity<TeacherResponse> getById(
+            @PathVariable Long id
+    ) {
         return ResponseEntity.ok(teacherService.getById(id));
     }
 

@@ -11,7 +11,7 @@ import org.mapstruct.Mapping;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 
-@Mapper(componentModel = "spring")
+@Mapper
 public interface LeadMapper {
 
     @Mapping(target = "interestedCourse", source = "interestedCourse")

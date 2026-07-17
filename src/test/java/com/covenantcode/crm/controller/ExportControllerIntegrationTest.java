@@ -66,6 +66,7 @@ class ExportControllerIntegrationTest extends BaseIntegrationTest {
 
     @BeforeEach
     void setUp() {
+
         leadRepository.deleteAllInBatch();
         courseRepository.deleteAllInBatch();
         userRepository.deleteAllInBatch();
