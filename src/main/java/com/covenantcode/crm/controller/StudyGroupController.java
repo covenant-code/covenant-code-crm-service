@@ -6,6 +6,7 @@ import com.covenantcode.crm.dto.group.StudyGroupResponse;
 import com.covenantcode.crm.dto.group.StudyGroupUpdateRequest;
 import com.covenantcode.crm.dto.lesson.LessonResponse;
 import com.covenantcode.crm.dto.student.StudentResponse;
+import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.GroupStatus;
 
 import com.covenantcode.crm.service.StudyGroupService;
@@ -25,6 +26,7 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -147,12 +149,6 @@ public class StudyGroupController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEACHER')")
-    public ResponseEntity<StudyGroupResponse> getGroupById(@PathVariable Long id) {
-        return ResponseEntity.ok(studyGroupService.getGroupById(id));
-    }
-
     @GetMapping("/{id}/students")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEACHER')")
     public ResponseEntity<List<StudentResponse>> getGroupStudents(@PathVariable Long id) {
@@ -163,5 +159,23 @@ public class StudyGroupController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEACHER')")
     public ResponseEntity<List<LessonResponse>> getGroupLessons(@PathVariable Long id) {
         return ResponseEntity.ok(studyGroupService.getGroupLessons(id));
+    }
+    @Operation(
+            summary = "Получение учебной группы по ID",
+            description = "Возвращает подробную информацию о группе. Доступ: ADMIN/MANAGER – любая группа, TEACHER – только свои, STUDENT – только свои."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Группа найдена",
+                    content = @Content(schema = @Schema(implementation = StudyGroupResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Не авторизован"),
+            @ApiResponse(responseCode = "403", description = "Нет прав на просмотр этой группы"),
+            @ApiResponse(responseCode = "404", description = "Группа не найдена")
+    })
+    @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<StudyGroupResponse> getGroupById(
+            @PathVariable Long id,
+            @AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(studyGroupService.getById(id, currentUser));
     }
 }

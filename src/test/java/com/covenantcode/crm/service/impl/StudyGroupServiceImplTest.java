@@ -8,14 +8,18 @@ import com.covenantcode.crm.dto.group.StudyGroupUpdateRequest;
 import com.covenantcode.crm.dto.group.UserShortResponse;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.Role;
+import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.StudyGroup;
 import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.GroupStatus;
 import com.covenantcode.crm.entity.enums.RoleName;
 import com.covenantcode.crm.exception.BadRequestException;
 import com.covenantcode.crm.exception.ResourceNotFoundException;
+import com.covenantcode.crm.mapper.LessonMapper;
+import com.covenantcode.crm.mapper.StudentMapper;
 import com.covenantcode.crm.mapper.StudyGroupMapper;
 import com.covenantcode.crm.repository.CourseRepository;
+import com.covenantcode.crm.repository.LessonRepository;
 import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
@@ -37,6 +41,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.AccessDeniedException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -68,6 +73,18 @@ class StudyGroupServiceImplTest {
 
     @Mock
     private CurrentUserProvider currentUserProvider;
+
+    @Mock
+    private StudentRepository studentRepository;
+
+    @Mock
+    private LessonRepository lessonRepository;
+
+    @Mock
+    private StudentMapper studentMapper;
+
+    @Mock
+    private LessonMapper lessonMapper;
 
     @InjectMocks
     private StudyGroupServiceImpl studyGroupService;
@@ -625,6 +642,176 @@ class StudyGroupServiceImplTest {
 
         verify(studyGroupRepository).findById(groupId);
         verify(studyGroupRepository, never()).save(any());
+        verifyNoInteractions(studyGroupMapper);
+    }
+
+    @Test
+    @DisplayName("ADMIN получает любую группу → 200")
+    void getById_Admin_ReturnsGroup() {
+        Long groupId = 1L;
+        User admin = new User();
+        Role adminRole = new Role();
+        adminRole.setName(RoleName.ADMIN);
+        admin.setId(999L);
+        admin.setRole(adminRole);
+
+        StudyGroup group = group1;
+        StudyGroupResponse expectedResponse = resp1;
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(studyGroupMapper.toResponse(group)).thenReturn(expectedResponse);
+
+        StudyGroupResponse result = studyGroupService.getById(groupId, admin);
+
+        assertThat(result).isEqualTo(expectedResponse);
+        verify(studyGroupRepository).findById(groupId);
+        verify(studyGroupMapper).toResponse(group);
+        verify(studentRepository, never()).findByUser_Id(any());
+    }
+
+    @Test
+    @DisplayName("TEACHER получает свою группу → 200")
+    void getById_TeacherOwnGroup_ReturnsGroup() {
+        Long groupId = 1L;
+        User teacher = teacher1;
+        StudyGroup group = group1;
+        StudyGroupResponse expectedResponse = resp1;
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(studyGroupMapper.toResponse(group)).thenReturn(expectedResponse);
+
+        StudyGroupResponse result = studyGroupService.getById(groupId, teacher);
+
+        assertThat(result).isEqualTo(expectedResponse);
+        verify(studyGroupRepository).findById(groupId);
+        verify(studyGroupMapper).toResponse(group);
+        verify(studentRepository, never()).findByUser_Id(any());
+    }
+
+    @Test
+    @DisplayName("TEACHER пытается получить чужую группу → 403")
+    void getById_TeacherOtherGroup_ThrowsAccessDenied() {
+        Long groupId = 1L;
+        User otherTeacher = teacher2;
+        StudyGroup group = group1;
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> studyGroupService.getById(groupId, otherTeacher))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Access Denied");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(studentRepository, never()).findByUser_Id(any());
+        verify(studyGroupMapper, never()).toResponse(any());
+    }
+
+    @Test
+    @DisplayName("STUDENT получает свою группу → 200")
+    void getById_StudentOwnGroup_ReturnsGroup() {
+        Long groupId = 1L;
+        Long userId = 777L;
+        Long studentId = 888L;
+
+        User studentUser = new User();
+        Role studentRole = new Role();
+        studentRole.setName(RoleName.STUDENT);
+        studentUser.setId(userId);
+        studentUser.setRole(studentRole);
+
+        Student student = new Student();
+        student.setId(studentId);
+        student.setUser(studentUser);
+
+        StudyGroup group = group1;
+        group.setStudents(Set.of(student));
+
+        StudyGroupResponse expectedResponse = resp1;
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(studentRepository.findByUser_Id(userId)).thenReturn(Optional.of(student));
+        when(studyGroupMapper.toResponse(group)).thenReturn(expectedResponse);
+
+        StudyGroupResponse result = studyGroupService.getById(groupId, studentUser);
+
+        assertThat(result).isEqualTo(expectedResponse);
+        verify(studyGroupRepository).findById(groupId);
+        verify(studentRepository).findByUser_Id(userId);
+        verify(studyGroupMapper).toResponse(group);
+    }
+
+    @Test
+    @DisplayName("STUDENT пытается получить чужую группу → 403 (не состоит в группе)")
+    void getById_StudentOtherGroup_ThrowsAccessDenied() {
+        Long groupId = 1L;
+        Long userId = 777L;
+        Long studentId = 888L;
+
+        User studentUser = new User();
+        Role studentRole = new Role();
+        studentRole.setName(RoleName.STUDENT);
+        studentUser.setId(userId);
+        studentUser.setRole(studentRole);
+
+        Student student = new Student();
+        student.setId(studentId);
+        student.setUser(studentUser);
+
+        StudyGroup group = group1;
+        group.setStudents(Set.of());
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(studentRepository.findByUser_Id(userId)).thenReturn(Optional.of(student));
+
+        assertThatThrownBy(() -> studyGroupService.getById(groupId, studentUser))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Access Denied");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(studentRepository).findByUser_Id(userId);
+        verify(studyGroupMapper, never()).toResponse(any());
+    }
+
+    @Test
+    @DisplayName("Студент не найден для пользователя → 403")
+    void getById_StudentUserWithoutStudentProfile_ThrowsAccessDenied() {
+        Long groupId = 1L;
+        Long userId = 777L;
+
+        User studentUser = new User();
+        Role studentRole = new Role();
+        studentRole.setName(RoleName.STUDENT);
+        studentUser.setId(userId);
+        studentUser.setRole(studentRole);
+
+        StudyGroup group = group1;
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(studentRepository.findByUser_Id(userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> studyGroupService.getById(groupId, studentUser))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessage("Access Denied");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(studentRepository).findByUser_Id(userId);
+        verify(studyGroupMapper, never()).toResponse(any());
+    }
+
+    @Test
+    @DisplayName("Группа не найдена → 404")
+    void getById_GroupNotFound_ThrowsResourceNotFoundException() {
+        Long groupId = 99L;
+        User anyUser = currentUser;
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> studyGroupService.getById(groupId, anyUser))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("StudyGroup not found with id: " + groupId);
+
+        verify(studyGroupRepository).findById(groupId);
+        verifyNoInteractions(studentRepository);
         verifyNoInteractions(studyGroupMapper);
     }
 }

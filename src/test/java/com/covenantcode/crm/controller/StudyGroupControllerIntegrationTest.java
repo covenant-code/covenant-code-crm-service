@@ -74,6 +74,7 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     private User manager;
     private User admin;
     private Role adminRole;
+    private User teacher2;
 
     @BeforeEach
     void setUp() {
@@ -103,6 +104,13 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
                 .orElseGet(() -> {
                     Role newRole = new Role();
                     newRole.setName(RoleName.ADMIN);
+                    return roleRepository.save(newRole);
+                });
+
+        Role studentRole = roleRepository.findByName(RoleName.STUDENT)
+                .orElseGet(() -> {
+                    Role newRole = new Role();
+                    newRole.setName(RoleName.STUDENT);
                     return roleRepository.save(newRole);
                 });
 
@@ -184,6 +192,27 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
                 .students(new HashSet<>())
                 .build();
         studyGroupRepository.saveAll(List.of(group1, group2, group3));
+
+        User studentUser = User.builder()
+                .email("student@test.com")
+                .password("encoded_password")
+                .firstName("StudentUser")
+                .lastName("Test")
+                .role(studentRole)
+                .enabled(true)
+                .build();
+        userRepository.save(studentUser);
+        student1.setUser(studentUser);
+        studentRepository.save(student1);
+
+        teacher2 = userRepository.save(User.builder()
+                .firstName("Teacher2")
+                .lastName("Test")
+                .email("teacher2@test.com")
+                .password("encoded_password")
+                .role(teacherRole)
+                .enabled(true)
+                .build());
     }
 
     @AfterEach
@@ -591,5 +620,74 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
                         .content(objectMapper.writeValueAsString(updateRequest)))
 
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+    }
+    @WithUserDetails(value = "admin@test.com", setupBefore = TestExecutionEvent.TEST_EXECUTION)
+    @DisplayName("Тест 1: ADMIN получает любую группу → 200")
+    void getGroupById_Admin_ShouldReturn200() throws Exception {
+        Long groupId = studyGroupRepository.findAll().get(0).getId();
+        mockMvc.perform(get("/api/v1/groups/{id}", groupId)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(groupId));
+    }
+
+    @WithUserDetails(value = "teacher@test.com", setupBefore = TestExecutionEvent.TEST_EXECUTION)
+    @DisplayName("Тест 2: TEACHER получает свою группу → 200")
+    void getGroupById_TeacherOwnGroup_ShouldReturn200() throws Exception {
+        StudyGroup group = studyGroupRepository.findAll().stream()
+                .filter(g -> g.getTeacher().getId().equals(teacher.getId()))
+                .findFirst()
+                .orElseThrow();
+        mockMvc.perform(get("/api/v1/groups/{id}", group.getId())
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(group.getId()));
+    }
+
+    @WithUserDetails(value = "teacher2@test.com", setupBefore = TestExecutionEvent.TEST_EXECUTION)
+    @DisplayName("Тест 3: TEACHER пытается получить чужую группу → 403")
+    void getGroupById_TeacherOtherGroup_ShouldReturn403() throws Exception {
+        StudyGroup group = studyGroupRepository.findAll().stream()
+                .filter(g -> !g.getTeacher().getId().equals(teacher2.getId()))
+                .findFirst()
+                .orElseThrow();
+        mockMvc.perform(get("/api/v1/groups/{id}", group.getId())
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @WithUserDetails(value = "student@test.com", setupBefore = TestExecutionEvent.TEST_EXECUTION)
+    @DisplayName("Тест 4: STUDENT получает свою группу (состоит в группе) → 200")
+    void getGroupById_StudentOwnGroup_ShouldReturn200() throws Exception {
+        StudyGroup group = studyGroupRepository.findAll().stream()
+                .filter(g -> g.getStudents().stream().anyMatch(s -> s.getId().equals(student1.getId())))
+                .findFirst()
+                .orElseThrow();
+        mockMvc.perform(get("/api/v1/groups/{id}", group.getId())
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(group.getId()));
+    }
+
+    @WithUserDetails(value = "student@test.com", setupBefore = TestExecutionEvent.TEST_EXECUTION)
+    @DisplayName("Тест 5: STUDENT пытается получить чужую группу (не состоит) → 403")
+    void getGroupById_StudentOtherGroup_ShouldReturn403() throws Exception {
+        StudyGroup group = studyGroupRepository.findAll().stream()
+                .filter(g -> g.getStudents().isEmpty())
+                .findFirst()
+                .orElseThrow();
+        mockMvc.perform(get("/api/v1/groups/{id}", group.getId())
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @WithUserDetails(value = "admin@test.com", setupBefore = TestExecutionEvent.TEST_EXECUTION)
+    @DisplayName("Тест 6: группа не найдена → 404")
+    void getGroupById_GroupNotFound_ShouldReturn404() throws Exception {
+        Long nonExistentId = 99999L;
+        mockMvc.perform(get("/api/v1/groups/{id}", nonExistentId)
+                        .contentType(APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.type").value("resource-not-found"));
     }
 }

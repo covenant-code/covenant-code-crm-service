@@ -4,11 +4,9 @@ import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupResponse;
 import com.covenantcode.crm.dto.group.StudyGroupUpdateRequest;
-
 import com.covenantcode.crm.dto.lesson.LessonResponse;
 import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.entity.Course;
-
 import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.StudyGroup;
 import com.covenantcode.crm.entity.User;
@@ -22,25 +20,24 @@ import com.covenantcode.crm.mapper.StudentMapper;
 import com.covenantcode.crm.mapper.StudyGroupMapper;
 import com.covenantcode.crm.repository.CourseRepository;
 import com.covenantcode.crm.repository.LessonRepository;
-
 import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.repository.specification.StudyGroupSpecifications;
 import com.covenantcode.crm.service.StudyGroupService;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-
 import com.covenantcode.crm.utils.CurrentUserProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -119,18 +116,6 @@ public class StudyGroupServiceImpl implements StudyGroupService {
                 .map(studyGroupMapper::toResponse);
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public StudyGroupResponse getGroupById(Long id) {
-        StudyGroup group = studyGroupRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Группа не найдена"));
-
-        if (currentUserProvider.isTeacher()) {
-            checkTeacherHasAccessToGroup(group);
-        }
-
-        return studyGroupMapper.toResponse(group);
-    }
     @Override
     @Transactional
     public StudyGroupResponse update(Long id, StudyGroupUpdateRequest request) {
@@ -237,5 +222,34 @@ public class StudyGroupServiceImpl implements StudyGroupService {
         if (group.getTeacher() == null || !group.getTeacher().getId().equals(currentUserId)) {
             throw new ForbiddenException("Нет доступа к этой группе");
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StudyGroupResponse getById(Long id, User currentUser) {
+        StudyGroup group = studyGroupRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("StudyGroup", id));
+        RoleName role = currentUser.getRole().getName();
+
+        if (role == RoleName.ADMIN || role == RoleName.MANAGER) {
+            return studyGroupMapper.toResponse(group);
+        }
+
+        if (role == RoleName.TEACHER) {
+            if (group.getTeacher() == null || !group.getTeacher().getId().equals(currentUser.getId())) {
+                throw new AccessDeniedException("Access Denied");
+            }
+            return studyGroupMapper.toResponse(group);
+        }
+
+        if (role == RoleName.STUDENT) {
+            Student student = studentRepository.findByUser_Id(currentUser.getId())
+                    .orElseThrow(() -> new AccessDeniedException("Access Denied"));
+            if (!group.getStudents().contains(student)) {
+                throw new AccessDeniedException("Access Denied");
+            }
+            return studyGroupMapper.toResponse(group);
+        }
+        throw new AccessDeniedException("Access Denied");
     }
 }

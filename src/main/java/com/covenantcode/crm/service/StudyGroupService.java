@@ -6,6 +6,7 @@ import com.covenantcode.crm.dto.group.StudyGroupResponse;
 import com.covenantcode.crm.dto.group.StudyGroupUpdateRequest;
 import com.covenantcode.crm.dto.lesson.LessonResponse;
 import com.covenantcode.crm.dto.student.StudentResponse;
+import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.GroupStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -22,10 +23,11 @@ public interface StudyGroupService{
     StudyGroupResponse updateStatus(Long id, GroupStatusUpdateRequest request);
 
     StudyGroupResponse update(Long id, StudyGroupUpdateRequest request);
-    StudyGroupResponse getGroupById(Long id);
 
     List<StudentResponse> getGroupStudents(Long id);
 
     List<LessonResponse> getGroupLessons(Long id);
+
+    StudyGroupResponse getById(Long id, User currentUser);
 
 }
