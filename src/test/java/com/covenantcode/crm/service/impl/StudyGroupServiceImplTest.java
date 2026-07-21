@@ -23,11 +23,6 @@ import com.covenantcode.crm.repository.LessonRepository;
 import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-
 import com.covenantcode.crm.utils.CurrentUserProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -43,6 +38,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 
+import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,6 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -98,6 +100,9 @@ class StudyGroupServiceImplTest {
     private StudyGroupUpdateRequest updateRequest;
     private User currentUser;
     private Long currentUserId;
+
+    private static final Long GROUP_ID_FOR_REMOVE = 1L;
+    private static final Long STUDENT_ID_FOR_REMOVE = 10L;
 
     @BeforeEach
     void setUp() {
@@ -813,5 +818,154 @@ class StudyGroupServiceImplTest {
         verify(studyGroupRepository).findById(groupId);
         verifyNoInteractions(studentRepository);
         verifyNoInteractions(studyGroupMapper);
+    }
+
+    @Test
+    @DisplayName("Успешное удаление из DRAFT-группы")
+    void removeStudent_fromDraftGroup_shouldRemoveStudentAndSave() {
+        Student student = Student.builder()
+                .id(STUDENT_ID_FOR_REMOVE)
+                .firstName("Иван")
+                .lastName("Иванов")
+                .build();
+        StudyGroup group = buildGroupForRemove(GroupStatus.DRAFT, Set.of(student));
+
+        when(studyGroupRepository.findById(GROUP_ID_FOR_REMOVE)).thenReturn(Optional.of(group));
+        when(studentRepository.findById(STUDENT_ID_FOR_REMOVE)).thenReturn(Optional.of(student));
+        when(studyGroupRepository.save(any(StudyGroup.class))).thenReturn(group);
+
+        studyGroupService.removeStudent(GROUP_ID_FOR_REMOVE, STUDENT_ID_FOR_REMOVE);
+
+        assertThat(group.getStudents()).doesNotContain(student);
+        verify(studyGroupRepository, times(1)).save(group);
+        verify(studyGroupRepository, times(1)).findById(GROUP_ID_FOR_REMOVE);
+        verify(studentRepository, times(1)).findById(STUDENT_ID_FOR_REMOVE);
+    }
+
+    @Test
+    @DisplayName("Успешное удаление из ACTIVE-группы")
+    void removeStudent_fromActiveGroup_shouldSucceed() {
+        Student student = Student.builder()
+                .id(STUDENT_ID_FOR_REMOVE)
+                .firstName("Иван")
+                .lastName("Иванов")
+                .build();
+        StudyGroup group = buildGroupForRemove(GroupStatus.ACTIVE, Set.of(student));
+
+        when(studyGroupRepository.findById(GROUP_ID_FOR_REMOVE)).thenReturn(Optional.of(group));
+        when(studentRepository.findById(STUDENT_ID_FOR_REMOVE)).thenReturn(Optional.of(student));
+        when(studyGroupRepository.save(any(StudyGroup.class))).thenReturn(group);
+
+        studyGroupService.removeStudent(GROUP_ID_FOR_REMOVE, STUDENT_ID_FOR_REMOVE);
+
+        assertThat(group.getStudents()).doesNotContain(student);
+        verify(studyGroupRepository, times(1)).save(group);
+    }
+
+    @Test
+    @DisplayName("Успешное удаление из CANCELLED-группы")
+    void removeStudent_fromCancelledGroup_shouldSucceed() {
+        Student student = Student.builder()
+                .id(STUDENT_ID_FOR_REMOVE)
+                .firstName("Иван")
+                .lastName("Иванов")
+                .build();
+        StudyGroup group = buildGroupForRemove(GroupStatus.CANCELLED, Set.of(student));
+
+        when(studyGroupRepository.findById(GROUP_ID_FOR_REMOVE)).thenReturn(Optional.of(group));
+        when(studentRepository.findById(STUDENT_ID_FOR_REMOVE)).thenReturn(Optional.of(student));
+        when(studyGroupRepository.save(any(StudyGroup.class))).thenReturn(group);
+
+        studyGroupService.removeStudent(GROUP_ID_FOR_REMOVE, STUDENT_ID_FOR_REMOVE);
+
+        assertThat(group.getStudents()).doesNotContain(student);
+        verify(studyGroupRepository, times(1)).save(group);
+    }
+
+    @Test
+    @DisplayName("Группа в статусе COMPLETED -> BadRequestException, save не вызывается")
+    void removeStudent_fromCompletedGroup_shouldThrowBadRequest() {
+        Student student = Student.builder()
+                .id(STUDENT_ID_FOR_REMOVE)
+                .firstName("Иван")
+                .lastName("Иванов")
+                .build();
+        StudyGroup group = buildGroupForRemove(GroupStatus.COMPLETED, Set.of(student));
+
+        when(studyGroupRepository.findById(GROUP_ID_FOR_REMOVE)).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> studyGroupService.removeStudent(GROUP_ID_FOR_REMOVE, STUDENT_ID_FOR_REMOVE))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("COMPLETED");
+
+        assertThat(group.getStudents()).contains(student);
+        verify(studyGroupRepository, never()).save(any(StudyGroup.class));
+        verify(studentRepository, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("Группа не найдена -> ResourceNotFoundException")
+    void removeStudent_groupNotFound_shouldThrowResourceNotFound() {
+        when(studyGroupRepository.findById(GROUP_ID_FOR_REMOVE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> studyGroupService.removeStudent(GROUP_ID_FOR_REMOVE, STUDENT_ID_FOR_REMOVE))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("StudyGroup")
+                .hasMessageContaining(GROUP_ID_FOR_REMOVE.toString());
+
+        verify(studyGroupRepository, never()).save(any(StudyGroup.class));
+        verify(studentRepository, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("Студент не найден -> ResourceNotFoundException")
+    void removeStudent_studentNotFound_shouldThrowResourceNotFound() {
+        StudyGroup group = buildGroupForRemove(GroupStatus.DRAFT, new HashSet<>());
+
+        when(studyGroupRepository.findById(GROUP_ID_FOR_REMOVE)).thenReturn(Optional.of(group));
+        when(studentRepository.findById(STUDENT_ID_FOR_REMOVE)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> studyGroupService.removeStudent(GROUP_ID_FOR_REMOVE, STUDENT_ID_FOR_REMOVE))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("Student")
+                .hasMessageContaining(STUDENT_ID_FOR_REMOVE.toString());
+
+        verify(studyGroupRepository, never()).save(any(StudyGroup.class));
+    }
+
+    @Test
+    @DisplayName("Студент не состоит в группе -> BadRequestException")
+    void removeStudent_studentNotInGroup_shouldThrowBadRequest() {
+        Student student = Student.builder()
+                .id(STUDENT_ID_FOR_REMOVE)
+                .firstName("Иван")
+                .lastName("Иванов")
+                .build();
+        Student otherStudent = Student.builder()
+                .id(999L)
+                .firstName("Другой")
+                .lastName("Студент")
+                .build();
+        StudyGroup group = buildGroupForRemove(GroupStatus.DRAFT, Set.of(otherStudent));
+
+        when(studyGroupRepository.findById(GROUP_ID_FOR_REMOVE)).thenReturn(Optional.of(group));
+        when(studentRepository.findById(STUDENT_ID_FOR_REMOVE)).thenReturn(Optional.of(student));
+
+        assertThatThrownBy(() -> studyGroupService.removeStudent(GROUP_ID_FOR_REMOVE, STUDENT_ID_FOR_REMOVE))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("не состоит в этой группе")
+                .hasMessageContaining(STUDENT_ID_FOR_REMOVE.toString());
+
+        assertThat(group.getStudents()).hasSize(1);
+        assertThat(group.getStudents()).contains(otherStudent);
+        verify(studyGroupRepository, never()).save(any(StudyGroup.class));
+    }
+
+    private StudyGroup buildGroupForRemove(GroupStatus status, Set<Student> students) {
+        return StudyGroup.builder()
+                .id(GROUP_ID_FOR_REMOVE)
+                .status(status)
+                .students(students != null ? new HashSet<>(students) : new HashSet<>())
+                .build();
     }
 }

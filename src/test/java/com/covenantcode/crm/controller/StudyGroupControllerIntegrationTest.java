@@ -17,11 +17,6 @@ import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.LocalDate;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -32,11 +27,20 @@ import org.springframework.security.test.context.support.TestExecutionEvent;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.test.context.support.WithUserDetails;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -66,6 +70,8 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     @Autowired
     private StudyGroupRepository studyGroupRepository;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private Course testCourse;
     private User teacher;
@@ -687,6 +693,140 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
         Long nonExistentId = 99999L;
         mockMvc.perform(get("/api/v1/groups/{id}", nonExistentId)
                         .contentType(APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.type").value("resource-not-found"));
+    }
+
+
+    @Test
+    @WithMockUser(roles = "MANAGER")
+    @DisplayName("DELETE /{id}/students/{studentId} — успешное удаление -> 204, студент удалён из БД")
+    void removeStudent_Success_ShouldReturn204() throws Exception {
+        Student student = studentRepository.save(Student.builder()
+                .firstName("TestStudent")
+                .lastName("Remove")
+                .email("remove@test.com")
+                .build());
+
+        StudyGroup group = StudyGroup.builder()
+                .name("Remove Test Group")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now())
+                .status(GroupStatus.DRAFT)
+                .students(new HashSet<>(Set.of(student)))
+                .build();
+        group = studyGroupRepository.save(group);
+
+        mockMvc.perform(delete("/api/v1/groups/{id}/students/{studentId}", group.getId(), student.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNoContent())
+                .andExpect(jsonPath("$").doesNotExist());
+
+        Long groupId = group.getId();
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            StudyGroup updatedGroup = studyGroupRepository.findById(groupId).orElseThrow();
+            assertThat(updatedGroup.getStudents()).doesNotContain(student);
+        });
+    }
+
+    @Test
+    @WithMockUser(roles = "MANAGER")
+    @DisplayName("DELETE /{id}/students/{studentId} — студент не состоит в группе -> 400 bad-request")
+    void removeStudent_StudentNotInGroup_ShouldReturn400() throws Exception {
+        Student student = studentRepository.save(Student.builder()
+                .firstName("StudentNotInGroup")
+                .lastName("Test")
+                .email("notin@test.com")
+                .build());
+
+        StudyGroup group = StudyGroup.builder()
+                .name("Empty Group")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now())
+                .status(GroupStatus.DRAFT)
+                .students(new HashSet<>())
+                .build();
+        group = studyGroupRepository.save(group);
+
+        mockMvc.perform(delete("/api/v1/groups/{id}/students/{studentId}", group.getId(), student.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.type").value("bad-request"));
+    }
+
+    @Test
+    @WithMockUser(roles = "MANAGER")
+    @DisplayName("DELETE /{id}/students/{studentId} — группа COMPLETED -> 400")
+    void removeStudent_GroupCompleted_ShouldReturn400() throws Exception {
+        Student student = studentRepository.save(Student.builder()
+                .firstName("CompletedStudent")
+                .lastName("Test")
+                .email("completed@test.com")
+                .build());
+
+        StudyGroup group = StudyGroup.builder()
+                .name("Completed Group")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now().minusDays(30))
+                .status(GroupStatus.COMPLETED)
+                .students(new HashSet<>(Set.of(student)))
+                .build();
+        group = studyGroupRepository.save(group);
+
+        mockMvc.perform(delete("/api/v1/groups/{id}/students/{studentId}", group.getId(), student.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.type").value("bad-request"));
+
+        Long groupId = group.getId();
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            StudyGroup unchangedGroup = studyGroupRepository.findById(groupId).orElseThrow();
+            assertThat(unchangedGroup.getStudents()).contains(student);
+        });
+    }
+
+    @Test
+    @WithMockUser(roles = "TEACHER")
+    @DisplayName("DELETE /{id}/students/{studentId} — TEACHER не может удалить студента из группы -> 403")
+    void removeStudent_TeacherRole_ShouldReturn403() throws Exception {
+        Student student = studentRepository.save(Student.builder()
+                .firstName("TeacherStudent")
+                .lastName("Test")
+                .email("teacherrole@test.com")
+                .build());
+
+        StudyGroup group = StudyGroup.builder()
+                .name("Teacher Role Group")
+                .course(testCourse)
+                .teacher(teacher)
+                .startDate(LocalDate.now())
+                .status(GroupStatus.DRAFT)
+                .students(new HashSet<>(Set.of(student)))
+                .build();
+        group = studyGroupRepository.save(group);
+
+        mockMvc.perform(delete("/api/v1/groups/{id}/students/{studentId}", group.getId(), student.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "MANAGER")
+    @DisplayName("DELETE /{id}/students/{studentId} — группа не найдена -> 404 resource-not-found")
+    void removeStudent_GroupNotFound_ShouldReturn404() throws Exception {
+        Student student = studentRepository.save(Student.builder()
+                .firstName("NotFoundStudent")
+                .lastName("Test")
+                .email("notfound@test.com")
+                .build());
+
+        Long nonExistentGroupId = 9999L;
+
+        mockMvc.perform(delete("/api/v1/groups/{id}/students/{studentId}", nonExistentGroupId, student.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.type").value("resource-not-found"));
     }

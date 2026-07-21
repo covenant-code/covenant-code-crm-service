@@ -252,4 +252,26 @@ public class StudyGroupServiceImpl implements StudyGroupService {
         }
         throw new AccessDeniedException("Access Denied");
     }
+
+    @Override
+    @Transactional
+    public void removeStudent(Long groupId, Long studentId) {
+        StudyGroup group = studyGroupRepository.findById(groupId)
+                .orElseThrow(() -> new ResourceNotFoundException("StudyGroup с id " + groupId + " не найдена"));
+
+        if (group.getStatus().equals(GroupStatus.COMPLETED)) {
+            throw new BadRequestException("Нельзя удалить студента из группы в статусе COMPLETED");
+        }
+
+        Student student = studentRepository.findById(studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Student с id " + studentId + " не найден"));
+
+        if (!group.getStudents().contains(student)) {
+            throw new BadRequestException(String.format("Студент с id %d не состоит в этой группе", studentId));
+        }
+
+        group.getStudents().remove(student);
+
+        studyGroupRepository.save(group);
+    }
 }

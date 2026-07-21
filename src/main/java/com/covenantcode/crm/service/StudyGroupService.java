@@ -30,4 +30,6 @@ public interface StudyGroupService{
 
     StudyGroupResponse getById(Long id, User currentUser);
 
+    void removeStudent(Long groupId, Long studentId);
+
 }
