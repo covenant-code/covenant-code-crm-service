@@ -4,6 +4,7 @@ import com.covenantcode.crm.dto.lesson.LessonCreateRequest;
 import com.covenantcode.crm.dto.lesson.LessonResponse;
 import com.covenantcode.crm.dto.lesson.LessonUpdateRequest;
 import java.time.LocalDate;
+import java.util.List;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -22,4 +23,6 @@ public interface LessonService {
                                 LocalDate dateTo, Pageable pageable);
 
     LessonResponse update(Long id, LessonUpdateRequest request);
+
+    List<LessonResponse> getLessonsByGroup(Long groupId, Authentication authentication);
 }

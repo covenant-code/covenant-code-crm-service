@@ -42,6 +42,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 
@@ -53,13 +54,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -799,5 +800,155 @@ class LessonServiceImplTest {
         verifyNoInteractions(userRepository);
         verifyNoInteractions(studentRepository);
         verify(lessonMapper, never()).toResponse(any());
+    }
+
+    @Test
+    @DisplayName("ADMIN получает расписание группы — успех")
+    void adminGetsLessons_ShouldReturnLessonList() {
+
+        Long groupId = 1L;
+
+        User admin = new User();
+        admin.setId(1L);
+        admin.setRole(adminRole);
+
+        StudyGroup group = new StudyGroup();
+        group.setId(groupId);
+        group.setName("Java-группа июнь 2026");
+        group.setStudents(new HashSet<>());
+
+        Lesson lesson1 = new Lesson();
+        lesson1.setId(1L);
+        lesson1.setStudyGroup(group);
+        lesson1.setLessonDate(LocalDate.of(2026, 6, 2));
+        lesson1.setStartTime(LocalTime.of(18, 0));
+
+        Lesson lesson2 = new Lesson();
+        lesson2.setId(2L);
+        lesson2.setStudyGroup(group);
+        lesson2.setLessonDate(LocalDate.of(2026, 6, 5));
+        lesson2.setStartTime(LocalTime.of(18, 0));
+
+        List<Lesson> lessons = List.of(lesson1, lesson2);
+
+        LessonResponse response1 = LessonResponse.builder()
+                .id(1L)
+                .build();
+
+        LessonResponse response2 = LessonResponse.builder()
+                .id(2L)
+                .build();
+
+        Authentication authentication = new UsernamePasswordAuthenticationToken(admin, null);
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(lessonRepository.findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId))
+                .thenReturn(lessons);
+        when(lessonMapper.toResponse(lesson1)).thenReturn(response1);
+        when(lessonMapper.toResponse(lesson2)).thenReturn(response2);
+
+        List<LessonResponse> result = lessonService.getLessonsByGroup(groupId, authentication);
+
+        assertThat(result).hasSize(2);
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(lessonRepository).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId);
+        verify(lessonMapper, times(2)).toResponse(any(Lesson.class));
+    }
+
+    @Test
+    @DisplayName("TEACHER запрашивает расписание своей группы — успех")
+    void teacherGetsOwnGroupLessons_ShouldReturnLessonList() {
+
+        Long groupId = 1L;
+        Long teacherId = 3L;
+
+        User teacher = new User();
+        teacher.setId(teacherId);
+        teacher.setRole(teacherRole);
+
+        StudyGroup group = new StudyGroup();
+        group.setId(groupId);
+        group.setName("Java-группа июнь 2026");
+        group.setTeacher(teacher);
+        group.setStudents(new HashSet<>());
+
+        Lesson lesson = new Lesson();
+        lesson.setId(1L);
+        lesson.setStudyGroup(group);
+
+        List<Lesson> lessons = List.of(lesson);
+
+        LessonResponse response = LessonResponse.builder()
+                .id(1L)
+                .build();
+
+        Authentication authentication = new UsernamePasswordAuthenticationToken(teacher, null);
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(lessonRepository.findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId))
+                .thenReturn(lessons);
+        when(lessonMapper.toResponse(lesson)).thenReturn(response);
+
+        List<LessonResponse> result = lessonService.getLessonsByGroup(groupId, authentication);
+
+        assertThat(result).hasSize(1);
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(lessonRepository).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId);
+    }
+
+    @Test
+    @DisplayName("TEACHER запрашивает расписание чужой группы — ForbiddenException")
+    void teacherGetsOtherGroupLessons_ShouldThrowForbiddenException() {
+
+        Long groupId = 1L;
+
+        User groupTeacher = new User();
+        groupTeacher.setId(3L);
+
+        User currentUser = new User();
+        currentUser.setId(5L);
+        currentUser.setRole(teacherRole);
+
+        StudyGroup group = new StudyGroup();
+        group.setId(groupId);
+        group.setTeacher(groupTeacher);
+        group.setStudents(new HashSet<>());
+
+        Authentication authentication = new UsernamePasswordAuthenticationToken(currentUser, null);
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> lessonService.getLessonsByGroup(groupId, authentication))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("You don't have access to this group");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(lessonRepository, never()).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(anyLong());
+        verify(lessonMapper, never()).toResponse(any(Lesson.class));
+    }
+
+    @Test
+    @DisplayName("группа не найдена — ResourceNotFoundException")
+    void groupNotFound_ShouldThrowResourceNotFoundException() {
+
+        Long groupId = 99L;
+
+        User admin = new User();
+        admin.setId(1L);
+        admin.setRole(adminRole);
+
+        Authentication authentication = new UsernamePasswordAuthenticationToken(admin, null);
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> lessonService.getLessonsByGroup(groupId, authentication))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("StudyGroup not found with id: 99");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(lessonRepository, never()).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(anyLong());
+        verify(lessonMapper, never()).toResponse(any(Lesson.class));
     }
 }

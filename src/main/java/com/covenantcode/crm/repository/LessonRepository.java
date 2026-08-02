@@ -12,4 +12,6 @@ public interface LessonRepository extends JpaRepository<Lesson, Long>, JpaSpecif
     List<Lesson> findAllByStudyGroupId(Long studyGroupId);
 
     List<Lesson> findByTeacherIdAndLessonDate(Long teacherId, LocalDate lessonDate);
+
+    List<Lesson> findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(Long groupId);
 }

@@ -26,8 +26,11 @@ import com.covenantcode.crm.utils.CurrentUserProvider;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -38,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional
+@Slf4j
 @AllArgsConstructor
 public class LessonServiceImpl implements LessonService {
 
@@ -238,5 +242,38 @@ public class LessonServiceImpl implements LessonService {
         }
 
         throw new ForbiddenException("Недостаточно прав");
+    }
+
+    @Override
+    public List<LessonResponse> getLessonsByGroup(Long groupId, Authentication authentication) {
+        StudyGroup group = studyGroupRepository.findById(groupId)
+                .orElseThrow(() -> new ResourceNotFoundException("StudyGroup", groupId));
+        
+        User currentUser = (User) authentication.getPrincipal();
+        Long userId = currentUser.getId();
+        Role userRole = currentUser.getRole();
+        
+        if (userRole.getName() == RoleName.TEACHER) {
+           
+            if (group.getTeacher() == null || !group.getTeacher().getId().equals(userId)) {
+                log.warn("Teacher {} tried to access group {} they don't teach", userId, groupId);
+                throw new ForbiddenException("You don't have access to this group");
+            }
+        } else if (userRole.getName() == RoleName.STUDENT) {
+           
+            boolean isStudentInGroup = group.getStudents().stream()
+                    .anyMatch(student -> student.getId().equals(userId));
+
+            if (!isStudentInGroup) {
+                log.warn("Student {} tried to access group {} they don't belong to", userId, groupId);
+                throw new ForbiddenException("You don't have access to this group");
+            }
+        }
+       
+        List<Lesson> lessons = lessonRepository.findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId);
+        
+        return lessons.stream()
+                .map(lessonMapper::toResponse)
+                .collect(Collectors.toList());
     }
 }
