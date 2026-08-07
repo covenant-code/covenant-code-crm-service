@@ -35,3 +35,9 @@ logging:
     org.springframework.security: DEBUG
     org.flywaydb: INFO
     org.hibernate.SQL: DEBUG
+
+telegram:
+  lead-bot:
+    token: ${TELEGRAM_LEAD_BOT_TOKEN:}
+    username: ${TELEGRAM_LEAD_BOT_USERNAME:}
+    enabled: ${TELEGRAM_LEAD_BOT_ENABLED:false}
