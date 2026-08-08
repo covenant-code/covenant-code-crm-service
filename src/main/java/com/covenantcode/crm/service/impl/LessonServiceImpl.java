@@ -22,7 +22,6 @@ import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.service.LessonOverlapService;
 import com.covenantcode.crm.service.LessonService;
 import com.covenantcode.crm.utils.CurrentUserProvider;
-
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -32,6 +31,7 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -131,11 +131,14 @@ public class LessonServiceImpl implements LessonService {
     @Override
     @Transactional
     public void delete(Long id) {
-        if (!lessonRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Lesson", id);
+        Lesson lesson = lessonRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lesson с id " + id + " не найдено"));
+
+        if (lesson.getStudyGroup().getStatus() == GroupStatus.COMPLETED) {
+            throw new BadRequestException("Нельзя удалить занятие завершённой группы");
         }
 
-        lessonRepository.deleteById(id);
+        lessonRepository.delete(lesson);
     }
 
     @Override
@@ -188,6 +191,39 @@ public class LessonServiceImpl implements LessonService {
         if (studyGroup.getStatus() != GroupStatus.ACTIVE) {
             throw new BadRequestException("Группа студентов должна быть в статусе ACTIVE");
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LessonResponse> getLessonsByTeacher(Long teacherId, LocalDate dateFrom,
+                                                    LocalDate dateTo, Authentication authentication) {
+
+        userRepository.findById(teacherId)
+                .orElseThrow(() -> new ResourceNotFoundException("User с id " + teacherId + " не найден"));
+
+        // 1. Безопасно извлекаем текущего пользователя (замечание 1)
+        User currentUser = extractUserFromAuthentication(authentication);
+
+        // 2. ИСПРАВЛЕНО: Проверка роли приведена к единому паттерну проекта через RoleName
+        boolean isTeacher = currentUser.getRole() != null
+                && currentUser.getRole().getName() == RoleName.TEACHER;
+
+        if (isTeacher && !currentUser.getId().equals(teacherId)) {
+            throw new ForbiddenException("Доступ к расписанию другого преподавателя запрещен");
+        }
+
+        // Оставшаяся часть логики спецификаций и маппинга
+        Specification<Lesson> specification = Specification.where(LessonSpecifications.hasTeacherId(teacherId))
+                .and(LessonSpecifications.hasDateFrom(dateFrom))
+                .and(LessonSpecifications.hasDateTo(dateTo));
+
+        Sort sort = Sort.by(Sort.Direction.ASC, "lessonDate", "startTime");
+
+        List<Lesson> lessons = lessonRepository.findAll(specification, sort);
+
+        return lessons.stream()
+                .map(lessonMapper::toResponse)
+                .toList();
     }
 
 
@@ -243,7 +279,38 @@ public class LessonServiceImpl implements LessonService {
         throw new ForbiddenException("Недостаточно прав");
     }
 
+  
     @Override
+    @Transactional(readOnly = true)
+    public List<LessonResponse> getLessonsByStudent(Long studentId, LocalDate dateFrom, LocalDate dateTo, Authentication authentication) {
+        // 1. Проверяем существование студента через проектное исключение (исправлено с 500 на 404)
+        Student student = studentRepository.findById(studentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Student", studentId));
+
+        // 2. Безопасно извлекаем текущего пользователя из аутентификации (без лишнего запроса к БД)
+        User currentUser = extractUserFromAuthentication(authentication);
+
+        // 3. Проверяем права доступа, используя доменную модель и Enum (исправлена непоследовательность)
+        boolean isStudent = currentUser.getRole().getName() == RoleName.STUDENT;
+
+        if (isStudent) {
+            Long linkedUserId = student.getUser().getId();
+            Long currentUserId = currentUser.getId();
+
+            // Студент может смотреть только свое собственное расписание
+            if (!linkedUserId.equals(currentUserId)) {
+                throw new ForbiddenException("You do not have permission to view this schedule");
+            }
+        }
+
+        // 4. Получаем расписание через строго определенный JPQL подзапрос по ТЗ
+        List<Lesson> lessons = lessonRepository.findLessonsByStudentIdWithDates(studentId, dateFrom, dateTo);
+
+        // 5. Маппим результат в Response DTO
+        return lessonMapper.toResponseList(lessons);
+    }
+  
+  @Override
     @Transactional(readOnly = true)
     public List<LessonResponse> getLessonsByGroup(Long groupId, Authentication authentication) {
 
@@ -301,5 +368,4 @@ public class LessonServiceImpl implements LessonService {
         return lessons.stream()
                 .map(lessonMapper::toResponse)
                 .collect(Collectors.toList());
-    }
 }
