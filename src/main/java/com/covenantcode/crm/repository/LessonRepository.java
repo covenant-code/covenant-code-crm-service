@@ -25,4 +25,6 @@ public interface LessonRepository extends JpaRepository<Lesson, Long>, JpaSpecif
             @Param("dateFrom") LocalDate dateFrom,
             @Param("dateTo") LocalDate dateTo
     );
+
+    List<Lesson> findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(Long groupId);
 }

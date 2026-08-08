@@ -9,7 +9,6 @@ import java.util.List;
 import org.springframework.security.core.Authentication;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.core.Authentication;
 
 
 public interface LessonService {
@@ -29,4 +28,6 @@ public interface LessonService {
                                              LocalDate dateTo, Authentication authentication);
 
     List<LessonResponse> getLessonsByStudent(Long studentId, LocalDate dateFrom, LocalDate dateTo, Authentication authentication);
+
+    List<LessonResponse> getLessonsByGroup(Long groupId, Authentication authentication);
 }
