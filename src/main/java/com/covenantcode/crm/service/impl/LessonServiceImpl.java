@@ -1,6 +1,5 @@
 package com.covenantcode.crm.service.impl;
 
-
 import com.covenantcode.crm.dto.lesson.LessonCreateRequest;
 import com.covenantcode.crm.dto.lesson.LessonResponse;
 import com.covenantcode.crm.dto.lesson.LessonUpdateRequest;
@@ -245,33 +244,60 @@ public class LessonServiceImpl implements LessonService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<LessonResponse> getLessonsByGroup(Long groupId, Authentication authentication) {
+
         StudyGroup group = studyGroupRepository.findById(groupId)
                 .orElseThrow(() -> new ResourceNotFoundException("StudyGroup", groupId));
-        
-        User currentUser = (User) authentication.getPrincipal();
+
+        User currentUser;
+        try {
+            currentUser = extractUserFromAuthentication(authentication);
+        } catch (Exception e) {
+            log.error("Failed to extract user from authentication", e);
+            throw new ForbiddenException("Не удалось определить пользователя");
+        }
+
+        if (currentUser == null) {
+            throw new ForbiddenException("Пользователь не найден");
+        }
+
         Long userId = currentUser.getId();
         Role userRole = currentUser.getRole();
-        
-        if (userRole.getName() == RoleName.TEACHER) {
-           
+
+        if (userRole == null) {
+            throw new ForbiddenException("У пользователя не назначена роль");
+        }
+
+        RoleName roleName = userRole.getName();
+
+        if (roleName == RoleName.ADMIN || roleName == RoleName.MANAGER) {
+
+        } else if (roleName == RoleName.TEACHER) {
             if (group.getTeacher() == null || !group.getTeacher().getId().equals(userId)) {
                 log.warn("Teacher {} tried to access group {} they don't teach", userId, groupId);
-                throw new ForbiddenException("You don't have access to this group");
+                throw new ForbiddenException("У вас нет доступа к этой группе");
             }
-        } else if (userRole.getName() == RoleName.STUDENT) {
-           
+        } else if (roleName == RoleName.STUDENT) {
+            Student student = studentRepository.findByUser_Id(userId)
+                    .orElseThrow(() -> {
+                        log.warn("Student not found for user id: {}", userId);
+                        return new ForbiddenException("Студент не найден");
+                    });
+
             boolean isStudentInGroup = group.getStudents().stream()
-                    .anyMatch(student -> student.getId().equals(userId));
+                    .anyMatch(studentInGroup -> studentInGroup.getId().equals(student.getId()));
 
             if (!isStudentInGroup) {
                 log.warn("Student {} tried to access group {} they don't belong to", userId, groupId);
-                throw new ForbiddenException("You don't have access to this group");
+                throw new ForbiddenException("У вас нет доступа к этой группе");
             }
+        } else {
+            throw new ForbiddenException("Недостаточно прав для доступа к расписанию группы");
         }
-       
+
         List<Lesson> lessons = lessonRepository.findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId);
-        
+
         return lessons.stream()
                 .map(lessonMapper::toResponse)
                 .collect(Collectors.toList());

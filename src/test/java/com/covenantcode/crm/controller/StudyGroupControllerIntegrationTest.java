@@ -9,18 +9,15 @@ import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.StudyGroup;
 import com.covenantcode.crm.entity.Student;
-import com.covenantcode.crm.entity.Lesson;
 import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.enums.GroupStatus;
 import com.covenantcode.crm.entity.enums.RoleName;
-import com.covenantcode.crm.repository.LessonRepository;
 import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.RoleRepository;
 import com.covenantcode.crm.repository.CourseRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,7 +31,6 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -43,7 +39,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.everyItem;
-import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -77,9 +72,6 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
-
-    @Autowired
-    private LessonRepository lessonRepository;
 
     private Course testCourse;
     private User teacher;
@@ -483,12 +475,11 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     @DisplayName("PATCH /{id}/status: группа не найдена → 404")
     void updateStatus_GroupNotFound_ShouldReturn404() throws Exception {
-        // given
+
         GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.ACTIVE);
         String requestJson = objectMapper.writeValueAsString(request);
         Long nonExistentId = 999L;
 
-        // when & then
         mockMvc.perform(patch("/api/v1/groups/{id}/status", nonExistentId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))
@@ -979,80 +970,5 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
                         .contentType(APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
-    }
-
-    @Test
-    @WithUserDetails(value = "admin@test.com", setupBefore = TestExecutionEvent.TEST_EXECUTION)
-    @DisplayName("GET расписания активной группы → HTTP 200, список занятий")
-    void getLessons_ActiveGroup_ShouldReturnSortedList() throws Exception {
-
-        Lesson lesson1 = new Lesson();
-        lesson1.setStudyGroup(group1);
-        lesson1.setTeacher(group1.getTeacher());
-        lesson1.setTopic("Урок 3");
-        lesson1.setLessonDate(LocalDate.of(2026, 6, 5));
-        lesson1.setStartTime(LocalTime.of(18, 0));
-        lesson1.setEndTime(LocalTime.of(19, 30));
-        lessonRepository.save(lesson1);
-
-        Lesson lesson2 = new Lesson();
-        lesson2.setStudyGroup(group1);
-        lesson2.setTeacher(group1.getTeacher());
-        lesson2.setTopic("Урок 1");
-        lesson2.setLessonDate(LocalDate.of(2026, 6, 2));
-        lesson2.setStartTime(LocalTime.of(18, 0));
-        lesson2.setEndTime(LocalTime.of(19, 30));
-        lessonRepository.save(lesson2);
-
-        Lesson lesson3 = new Lesson();
-        lesson3.setStudyGroup(group1);
-        lesson3.setTeacher(group1.getTeacher());
-        lesson3.setTopic("Урок 2");
-        lesson3.setLessonDate(LocalDate.of(2026, 6, 2));
-        lesson3.setStartTime(LocalTime.of(19, 0));
-        lesson3.setEndTime(LocalTime.of(20, 30));
-        lessonRepository.save(lesson3);
-
-        lessonRepository.flush();
-
-        mockMvc.perform(get("/api/v1/groups/{groupId}/lessons", group1.getId()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(3)))
-                .andExpect(jsonPath("$[*].topic").value(Matchers.containsInAnyOrder("Урок 1", "Урок 2", "Урок 3")));
-    }
-
-    @Test
-    @WithUserDetails(value = "admin@test.com", setupBefore = TestExecutionEvent.TEST_EXECUTION)
-    @DisplayName("группа не найдена → HTTP 404")
-    void getLessons_GroupNotFound_ShouldReturn404() throws Exception {
-        mockMvc.perform(get("/api/v1/groups/999/lessons"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.type").value("resource-not-found"))
-                .andExpect(jsonPath("$.detail").value("Study group with id 999 not found"));
-    }
-
-    @Test
-    @WithUserDetails(value = "teacher2@test.com", setupBefore = TestExecutionEvent.TEST_EXECUTION)
-    @DisplayName("TEACHER не своя группа → HTTP 403")
-    void getLessons_TeacherNotOwnGroup_ShouldReturn403() throws Exception {
-        mockMvc.perform(get("/api/v1/groups/{groupId}/lessons", group1.getId()))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    @WithUserDetails(value = "student@test.com", setupBefore = TestExecutionEvent.TEST_EXECUTION)
-    @DisplayName("STUDENT не своя группа → HTTP 403")
-    void getLessons_StudentNotOwnGroup_ShouldReturn403() throws Exception {
-        StudyGroup otherGroup = new StudyGroup();
-        otherGroup.setName("Other Group");
-        otherGroup.setCourse(testCourse);
-        otherGroup.setTeacher(teacher2);
-        otherGroup.setStartDate(LocalDate.now());
-        otherGroup.setStatus(GroupStatus.ACTIVE);
-        otherGroup.setStudents(new HashSet<>());
-        otherGroup = studyGroupRepository.save(otherGroup);
-
-        mockMvc.perform(get("/api/v1/groups/{groupId}/lessons", otherGroup.getId()))
-                .andExpect(status().isForbidden());
     }
 }

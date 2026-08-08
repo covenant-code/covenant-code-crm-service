@@ -100,7 +100,6 @@ class LessonServiceImplTest {
     @InjectMocks
     private LessonServiceImpl lessonService;
 
-    // Вспомогательные переменные для тестов
     private final Long lessonId = 1L;
     private final Long teacherId = 10L;
     private final Long groupId = 100L;
@@ -144,7 +143,7 @@ class LessonServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        // Подготовка сущностей с использованием ваших констант
+
         activeGroup = new StudyGroup();
         activeGroup.setId(groupId);
         activeGroup.setStatus(GroupStatus.ACTIVE);
@@ -231,7 +230,7 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 1: без фильтров — возвращает все занятия постранично")
     void getAll_WithoutFilters_ReturnsAllLessons() {
-        // Given
+
         Pageable pageable = PageRequest.of(0, 10);
         Lesson lesson1 = new Lesson();
         Lesson lesson2 = new Lesson();
@@ -241,21 +240,16 @@ class LessonServiceImplTest {
         LessonResponse response1 = LessonResponse.builder().build();
         LessonResponse response2 = LessonResponse.builder().build();
 
-        // Имитируем запрос от ADMIN / MANAGER, чтобы не срабатывала принудительная фильтрация преподавателя
         when(currentUserProvider.isTeacher()).thenReturn(false);
 
-        // lessonRepository.findAll(any(Specification.class), any(Pageable.class)) → Page из двух занятий
         when(lessonRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(lessonPage);
         when(lessonMapper.toResponse(lesson1)).thenReturn(response1);
         when(lessonMapper.toResponse(lesson2)).thenReturn(response2);
 
-        // When
         Page<LessonResponse> result = lessonService.getAll(null, null, null, null, pageable);
 
-        // Then
         assertThat(result).isNotNull();
-        // Проверить: метод вернул Page с двумя элементами
         assertThat(result.getContent()).hasSize(2);
         assertThat(result.getContent()).containsExactly(response1, response2);
 
@@ -275,18 +269,15 @@ class LessonServiceImplTest {
         when(lessonRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(emptyPage);
 
-        // When
         lessonService.getAll(groupId, teacherId, null, null, pageable);
 
-        // Then
-        // Убедиться, что findAll(spec, pageable) вызван один раз с ненулевой спецификацией
         verify(lessonRepository, times(1)).findAll(any(Specification.class), any(Pageable.class));
     }
 
     @Test
     @DisplayName("Тест 3: успешное обновление занятия")
     void update_Success() {
-        // Given
+
         LessonUpdateRequest request = createValidRequest();
 
         LessonResponse expectedResponse = LessonResponse.builder()
@@ -299,7 +290,6 @@ class LessonServiceImplTest {
                         .build())
                 .build();
 
-        // Подставляем значения из request, чтобы верификация совпала до миллисекунды
         LocalDate reqDate = request.getLessonDate();
         LocalTime reqStart = request.getStartTime();
         LocalTime reqEnd = request.getEndTime();
@@ -310,13 +300,10 @@ class LessonServiceImplTest {
 
         when(lessonRepository.save(any(Lesson.class))).thenReturn(existingLesson);
 
-        // ИСПРАВЛЕНО: используем any(Lesson.class), так как объект existingLesson мутирует внутри сервиса
         when(lessonMapper.toResponse(any(Lesson.class))).thenReturn(expectedResponse);
 
-        // When
         LessonResponse actualResponse = lessonService.update(lessonId, request);
 
-        // Then
         assertNotNull(actualResponse);
         assertEquals(expectedResponse, actualResponse);
 
@@ -342,7 +329,6 @@ class LessonServiceImplTest {
         when(studyGroupRepository.findById(groupId))
                 .thenReturn(Optional.of(completedGroup));
 
-        // When & Then
         BadRequestException exception = assertThrows(
                 BadRequestException.class,
                 () -> lessonService.update(lessonId, request)
@@ -390,7 +376,7 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 6: обновление без конфликта с самим собой")
     void update_NoConflictWithItself() {
-        // Given
+
         LessonUpdateRequest request = createValidRequest();
 
         LocalDate reqDate = request.getLessonDate();
@@ -409,12 +395,10 @@ class LessonServiceImplTest {
 
         when(lessonRepository.save(any(Lesson.class))).thenReturn(existingLesson);
 
-        // ИСПРАВЛЕНО: any(Lesson.class) для стабильности при мутациях
         when(lessonMapper.toResponse(any(Lesson.class))).thenReturn(mockResponse);
 
         doNothing().when(lessonOverlapService).checkTeacherOverlap(teacherId, reqDate, reqStart, reqEnd, lessonId);
 
-        // When & Then
         assertDoesNotThrow(() -> lessonService.update(lessonId, request));
 
         verify(lessonOverlapService).checkTeacherOverlap(teacherId, reqDate, reqStart, reqEnd, lessonId);
@@ -423,7 +407,7 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 7: пересечение с другим занятием — ConflictException")
     void update_TeacherOverlap_ThrowsConflictException() {
-        // Given
+
         LessonUpdateRequest request = createValidRequest();
 
         LocalDate reqDate = request.getLessonDate();
@@ -437,7 +421,6 @@ class LessonServiceImplTest {
         doThrow(new ConflictException("У преподавателя уже есть занятие в это время"))
                 .when(lessonOverlapService).checkTeacherOverlap(teacherId, reqDate, reqStart, reqEnd, lessonId);
 
-        // When & Then
         ConflictException exception = assertThrows(ConflictException.class, () ->
                 lessonService.update(lessonId, request)
         );
@@ -922,7 +905,7 @@ class LessonServiceImplTest {
 
         assertThatThrownBy(() -> lessonService.getLessonsByGroup(groupId, authentication))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessage("You don't have access to this group");
+                .hasMessage("У вас нет доступа к этой группе");
 
         verify(studyGroupRepository).findById(groupId);
         verify(lessonRepository, never()).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(anyLong());

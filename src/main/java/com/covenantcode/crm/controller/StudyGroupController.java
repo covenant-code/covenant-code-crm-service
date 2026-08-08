@@ -5,7 +5,6 @@ import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupResponse;
 import com.covenantcode.crm.dto.group.StudyGroupUpdateRequest;
-import com.covenantcode.crm.dto.lesson.LessonResponse;
 import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.GroupStatus;
@@ -167,12 +166,6 @@ public class StudyGroupController {
             @PathVariable Long id,
             @AuthenticationPrincipal User currentUser) {
         return ResponseEntity.ok(studyGroupService.getStudentsOfGroup(id, currentUser));
-    }
-
-    @GetMapping("/{id}/lessons")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEACHER')")
-    public ResponseEntity<List<LessonResponse>> getGroupLessons(@PathVariable Long id) {
-        return ResponseEntity.ok(studyGroupService.getGroupLessons(id));
     }
 
     @Operation(
