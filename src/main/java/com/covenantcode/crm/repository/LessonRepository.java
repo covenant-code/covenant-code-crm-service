@@ -13,8 +13,7 @@ public interface LessonRepository extends JpaRepository<Lesson, Long>, JpaSpecif
 
     List<Lesson> findAllByStudyGroupId(Long studyGroupId);
 
-    List<Lesson> findByTeacherIdAndLessonDate(Long teacherId, LocalDate lessonDate);
-
+    List<Lesson> findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(Long groupId);
     @Query("SELECT l FROM Lesson l WHERE l.studyGroup.id IN " +
             "  (SELECT g.id FROM StudyGroup g JOIN g.students s WHERE s.id = :studentId) " +
             "AND (CAST(:dateFrom AS date) IS NULL OR l.lessonDate >= :dateFrom) " +
@@ -25,4 +24,6 @@ public interface LessonRepository extends JpaRepository<Lesson, Long>, JpaSpecif
             @Param("dateFrom") LocalDate dateFrom,
             @Param("dateTo") LocalDate dateTo
     );
+  
+   List<Lesson> findByTeacherIdAndLessonDate(Long teacherId, LocalDate lessonDate);
 }

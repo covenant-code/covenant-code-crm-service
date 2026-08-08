@@ -5,18 +5,18 @@ import com.covenantcode.crm.dto.group.AddStudentToGroupRequest;
 import com.covenantcode.crm.dto.group.GroupStatusUpdateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupCreateRequest;
 import com.covenantcode.crm.dto.group.StudyGroupUpdateRequest;
-import com.covenantcode.crm.entity.Course;
-import com.covenantcode.crm.entity.Role;
-import com.covenantcode.crm.entity.Student;
-import com.covenantcode.crm.entity.StudyGroup;
 import com.covenantcode.crm.entity.User;
+import com.covenantcode.crm.entity.Course;
+import com.covenantcode.crm.entity.StudyGroup;
+import com.covenantcode.crm.entity.Student;
+import com.covenantcode.crm.entity.Role;
 import com.covenantcode.crm.entity.enums.GroupStatus;
 import com.covenantcode.crm.entity.enums.RoleName;
-import com.covenantcode.crm.repository.CourseRepository;
-import com.covenantcode.crm.repository.RoleRepository;
+import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
-import com.covenantcode.crm.repository.UserRepository;
+import com.covenantcode.crm.repository.RoleRepository;
+import com.covenantcode.crm.repository.CourseRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -37,8 +37,8 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.everyItem;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.everyItem;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -475,12 +475,11 @@ class StudyGroupControllerIntegrationTest extends BaseIntegrationTest {
     @WithMockUser(roles = "ADMIN")
     @DisplayName("PATCH /{id}/status: группа не найдена → 404")
     void updateStatus_GroupNotFound_ShouldReturn404() throws Exception {
-        // given
+
         GroupStatusUpdateRequest request = new GroupStatusUpdateRequest(GroupStatus.ACTIVE);
         String requestJson = objectMapper.writeValueAsString(request);
         Long nonExistentId = 999L;
 
-        // when & then
         mockMvc.perform(patch("/api/v1/groups/{id}/status", nonExistentId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(requestJson))

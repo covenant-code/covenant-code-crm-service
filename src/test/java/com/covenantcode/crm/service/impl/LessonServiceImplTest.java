@@ -44,6 +44,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -57,6 +58,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
@@ -102,7 +104,6 @@ class LessonServiceImplTest {
     @InjectMocks
     private LessonServiceImpl lessonService;
 
-    // Вспомогательные переменные для тестов
     private final Long lessonId = 1L;
     private final Long teacherId = 10L;
     private final Long groupId = 100L;
@@ -146,7 +147,7 @@ class LessonServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        // Подготовка сущностей с использованием ваших констант
+
         activeGroup = new StudyGroup();
         activeGroup.setId(groupId);
         activeGroup.setStatus(GroupStatus.ACTIVE);
@@ -233,7 +234,7 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 1: без фильтров — возвращает все занятия постранично")
     void getAll_WithoutFilters_ReturnsAllLessons() {
-        // Given
+
         Pageable pageable = PageRequest.of(0, 10);
         Lesson lesson1 = new Lesson();
         Lesson lesson2 = new Lesson();
@@ -243,21 +244,16 @@ class LessonServiceImplTest {
         LessonResponse response1 = LessonResponse.builder().build();
         LessonResponse response2 = LessonResponse.builder().build();
 
-        // Имитируем запрос от ADMIN / MANAGER, чтобы не срабатывала принудительная фильтрация преподавателя
         when(currentUserProvider.isTeacher()).thenReturn(false);
 
-        // lessonRepository.findAll(any(Specification.class), any(Pageable.class)) → Page из двух занятий
         when(lessonRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(lessonPage);
         when(lessonMapper.toResponse(lesson1)).thenReturn(response1);
         when(lessonMapper.toResponse(lesson2)).thenReturn(response2);
 
-        // When
         Page<LessonResponse> result = lessonService.getAll(null, null, null, null, pageable);
 
-        // Then
         assertThat(result).isNotNull();
-        // Проверить: метод вернул Page с двумя элементами
         assertThat(result.getContent()).hasSize(2);
         assertThat(result.getContent()).containsExactly(response1, response2);
 
@@ -277,18 +273,15 @@ class LessonServiceImplTest {
         when(lessonRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(emptyPage);
 
-        // When
         lessonService.getAll(groupId, teacherId, null, null, pageable);
 
-        // Then
-        // Убедиться, что findAll(spec, pageable) вызван один раз с ненулевой спецификацией
         verify(lessonRepository, times(1)).findAll(any(Specification.class), any(Pageable.class));
     }
 
     @Test
     @DisplayName("Тест 3: успешное обновление занятия")
     void update_Success() {
-        // Given
+
         LessonUpdateRequest request = createValidRequest();
 
         LessonResponse expectedResponse = LessonResponse.builder()
@@ -301,7 +294,6 @@ class LessonServiceImplTest {
                         .build())
                 .build();
 
-        // Подставляем значения из request, чтобы верификация совпала до миллисекунды
         LocalDate reqDate = request.getLessonDate();
         LocalTime reqStart = request.getStartTime();
         LocalTime reqEnd = request.getEndTime();
@@ -312,13 +304,10 @@ class LessonServiceImplTest {
 
         when(lessonRepository.save(any(Lesson.class))).thenReturn(existingLesson);
 
-        // ИСПРАВЛЕНО: используем any(Lesson.class), так как объект existingLesson мутирует внутри сервиса
         when(lessonMapper.toResponse(any(Lesson.class))).thenReturn(expectedResponse);
 
-        // When
         LessonResponse actualResponse = lessonService.update(lessonId, request);
 
-        // Then
         assertNotNull(actualResponse);
         assertEquals(expectedResponse, actualResponse);
 
@@ -344,7 +333,6 @@ class LessonServiceImplTest {
         when(studyGroupRepository.findById(groupId))
                 .thenReturn(Optional.of(completedGroup));
 
-        // When & Then
         BadRequestException exception = assertThrows(
                 BadRequestException.class,
                 () -> lessonService.update(lessonId, request)
@@ -392,7 +380,7 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 6: обновление без конфликта с самим собой")
     void update_NoConflictWithItself() {
-        // Given
+
         LessonUpdateRequest request = createValidRequest();
 
         LocalDate reqDate = request.getLessonDate();
@@ -411,12 +399,10 @@ class LessonServiceImplTest {
 
         when(lessonRepository.save(any(Lesson.class))).thenReturn(existingLesson);
 
-        // ИСПРАВЛЕНО: any(Lesson.class) для стабильности при мутациях
         when(lessonMapper.toResponse(any(Lesson.class))).thenReturn(mockResponse);
 
         doNothing().when(lessonOverlapService).checkTeacherOverlap(teacherId, reqDate, reqStart, reqEnd, lessonId);
 
-        // When & Then
         assertDoesNotThrow(() -> lessonService.update(lessonId, request));
 
         verify(lessonOverlapService).checkTeacherOverlap(teacherId, reqDate, reqStart, reqEnd, lessonId);
@@ -425,7 +411,7 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 7: пересечение с другим занятием — ConflictException")
     void update_TeacherOverlap_ThrowsConflictException() {
-        // Given
+
         LessonUpdateRequest request = createValidRequest();
 
         LocalDate reqDate = request.getLessonDate();
@@ -439,7 +425,6 @@ class LessonServiceImplTest {
         doThrow(new ConflictException("У преподавателя уже есть занятие в это время"))
                 .when(lessonOverlapService).checkTeacherOverlap(teacherId, reqDate, reqStart, reqEnd, lessonId);
 
-        // When & Then
         ConflictException exception = assertThrows(ConflictException.class, () ->
                 lessonService.update(lessonId, request)
         );
@@ -803,6 +788,7 @@ class LessonServiceImplTest {
         verifyNoInteractions(studentRepository);
         verify(lessonMapper, never()).toResponse(any());
     }
+  
     @Test
     @DisplayName("Тест getLessonsByTeacher 1: ADMIN запрашивает расписание любого преподавателя — успех")
     void getLessonsByTeacher_WhenAdminRequests_ShouldReturnLessons() {
@@ -1092,4 +1078,155 @@ class LessonServiceImplTest {
         assertEquals(3, result.size());
         verifyNoInteractions(userRepository);
     }
+  
+  @Test
+    @DisplayName("ADMIN получает расписание группы — успех")
+    void adminGetsLessons_ShouldReturnLessonList() {
+
+        Long groupId = 1L;
+
+        User admin = new User();
+        admin.setId(1L);
+        admin.setRole(adminRole);
+
+        StudyGroup group = new StudyGroup();
+        group.setId(groupId);
+        group.setName("Java-группа июнь 2026");
+        group.setStudents(new HashSet<>());
+
+        Lesson lesson1 = new Lesson();
+        lesson1.setId(1L);
+        lesson1.setStudyGroup(group);
+        lesson1.setLessonDate(LocalDate.of(2026, 6, 2));
+        lesson1.setStartTime(LocalTime.of(18, 0));
+
+        Lesson lesson2 = new Lesson();
+        lesson2.setId(2L);
+        lesson2.setStudyGroup(group);
+        lesson2.setLessonDate(LocalDate.of(2026, 6, 5));
+        lesson2.setStartTime(LocalTime.of(18, 0));
+
+        List<Lesson> lessons = List.of(lesson1, lesson2);
+
+        LessonResponse response1 = LessonResponse.builder()
+                .id(1L)
+                .build();
+
+        LessonResponse response2 = LessonResponse.builder()
+                .id(2L)
+                .build();
+
+        Authentication authentication = new UsernamePasswordAuthenticationToken(admin, null);
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(lessonRepository.findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId))
+                .thenReturn(lessons);
+        when(lessonMapper.toResponse(lesson1)).thenReturn(response1);
+        when(lessonMapper.toResponse(lesson2)).thenReturn(response2);
+
+        List<LessonResponse> result = lessonService.getLessonsByGroup(groupId, authentication);
+
+        assertThat(result).hasSize(2);
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(lessonRepository).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId);
+        verify(lessonMapper, times(2)).toResponse(any(Lesson.class));
+    }
+
+    @Test
+    @DisplayName("TEACHER запрашивает расписание своей группы — успех")
+    void teacherGetsOwnGroupLessons_ShouldReturnLessonList() {
+
+        Long groupId = 1L;
+        Long teacherId = 3L;
+
+        User teacher = new User();
+        teacher.setId(teacherId);
+        teacher.setRole(teacherRole);
+
+        StudyGroup group = new StudyGroup();
+        group.setId(groupId);
+        group.setName("Java-группа июнь 2026");
+        group.setTeacher(teacher);
+        group.setStudents(new HashSet<>());
+
+        Lesson lesson = new Lesson();
+        lesson.setId(1L);
+        lesson.setStudyGroup(group);
+
+        List<Lesson> lessons = List.of(lesson);
+
+        LessonResponse response = LessonResponse.builder()
+                .id(1L)
+                .build();
+
+        Authentication authentication = new UsernamePasswordAuthenticationToken(teacher, null);
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(lessonRepository.findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId))
+                .thenReturn(lessons);
+        when(lessonMapper.toResponse(lesson)).thenReturn(response);
+
+        List<LessonResponse> result = lessonService.getLessonsByGroup(groupId, authentication);
+
+        assertThat(result).hasSize(1);
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(lessonRepository).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId);
+    }
+
+    @Test
+    @DisplayName("TEACHER запрашивает расписание чужой группы — ForbiddenException")
+    void teacherGetsOtherGroupLessons_ShouldThrowForbiddenException() {
+
+        Long groupId = 1L;
+
+        User groupTeacher = new User();
+        groupTeacher.setId(3L);
+
+        User currentUser = new User();
+        currentUser.setId(5L);
+        currentUser.setRole(teacherRole);
+
+        StudyGroup group = new StudyGroup();
+        group.setId(groupId);
+        group.setTeacher(groupTeacher);
+        group.setStudents(new HashSet<>());
+
+        Authentication authentication = new UsernamePasswordAuthenticationToken(currentUser, null);
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> lessonService.getLessonsByGroup(groupId, authentication))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("У вас нет доступа к этой группе");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(lessonRepository, never()).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(anyLong());
+        verify(lessonMapper, never()).toResponse(any(Lesson.class));
+    }
+
+    @Test
+    @DisplayName("группа не найдена — ResourceNotFoundException")
+    void groupNotFound_ShouldThrowResourceNotFoundException() {
+
+        Long groupId = 99L;
+
+        User admin = new User();
+        admin.setId(1L);
+        admin.setRole(adminRole);
+
+        Authentication authentication = new UsernamePasswordAuthenticationToken(admin, null);
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> lessonService.getLessonsByGroup(groupId, authentication))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("StudyGroup not found with id: 99");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(lessonRepository, never()).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(anyLong());
+        verify(lessonMapper, never()).toResponse(any(Lesson.class));
+    }
+}
 }
