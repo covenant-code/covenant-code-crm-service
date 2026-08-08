@@ -1,6 +1,7 @@
 package com.covenantcode.crm.controller;
 
 import com.covenantcode.crm.dto.user.EnabledUpdateRequest;
+import com.covenantcode.crm.dto.user.TelegramChatIdUpdateRequest;
 import com.covenantcode.crm.dto.user.UserResponse;
 import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.service.UserService;
@@ -17,7 +18,13 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/users")
@@ -73,5 +80,23 @@ public class UserController {
         Long currentUserID = Utils.extractId(authentication);
         UserResponse updateUser = userService.updateEnabled(id, request.getEnabled(), currentUserID);
         return ResponseEntity.ok(updateUser);
+    }
+
+    @PatchMapping("/{id}/telegram")
+    @Operation(summary = "Обновить Telegram Chat ID",
+            description = "Обновляет Telegram Chat ID пользователя. ADMIN может обновить любому, остальные только себе.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Chat ID успешно обновлён"),
+            @ApiResponse(responseCode = "400", description = "Неверный формат Chat ID"),
+            @ApiResponse(responseCode = "401", description = "Не авторизован"),
+            @ApiResponse(responseCode = "403", description = "Нет прав доступа"),
+            @ApiResponse(responseCode = "404", description = "Пользователь не найден")
+    })
+    public ResponseEntity<UserResponse> updateTelegramChatId(@PathVariable Long id,
+                                                             @Valid @RequestBody TelegramChatIdUpdateRequest request,
+                                                             Authentication authentication) {
+        User currentUser = (User) authentication.getPrincipal();
+        UserResponse updatedUser = userService.updateTelegramChatId(id, request.getTelegramChatId(), currentUser);
+        return ResponseEntity.ok(updatedUser);
     }
 }

@@ -271,4 +271,22 @@ public class UserControllerIntegrationTest extends BaseIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements", greaterThanOrEqualTo(2)));
     }
+
+    @Test
+    @DisplayName("ADMIN привязывает Telegram Chat ID другому пользователю — HTTP 200 и сохранение в БД")
+    void adminUpdatesUserTelegramChatId_shouldReturn200AndPersist() throws Exception {
+        User manager = userRepository.findByEmail("manager@test.ru").orElseThrow();
+        long managerId = manager.getId();
+
+        mockMvc.perform(patch("/api/v1/users/{id}/telegram", managerId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"telegramChatId\": \"123456789\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(managerId))
+                .andExpect(jsonPath("$.telegramChatId").value("123456789"));
+
+        User updatedManager = userRepository.findById(managerId).orElseThrow();
+        assertThat(updatedManager.getTelegramChatId()).isEqualTo("123456789");
+    }
 }

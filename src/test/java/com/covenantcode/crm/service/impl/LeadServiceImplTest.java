@@ -1,20 +1,20 @@
 package com.covenantcode.crm.service.impl;
 
 import com.covenantcode.crm.dto.lead.CourseShortResponse;
-import com.covenantcode.crm.dto.lead.LeadCommentResponse;
 import com.covenantcode.crm.dto.lead.LeadCommentCreateRequest;
-import com.covenantcode.crm.dto.lead.LeadResponse;
-import com.covenantcode.crm.dto.lead.LeadCreateRequest;
-import com.covenantcode.crm.dto.lead.LeadUpdateRequest;
+import com.covenantcode.crm.dto.lead.LeadCommentResponse;
 import com.covenantcode.crm.dto.lead.LeadConvertRequest;
-import com.covenantcode.crm.dto.lead.UserShortResponse;
+import com.covenantcode.crm.dto.lead.LeadCreateRequest;
+import com.covenantcode.crm.dto.lead.LeadResponse;
 import com.covenantcode.crm.dto.lead.LeadStatusUpdateRequest;
+import com.covenantcode.crm.dto.lead.LeadUpdateRequest;
+import com.covenantcode.crm.dto.lead.UserShortResponse;
 import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.Lead;
-import com.covenantcode.crm.entity.User;
-import com.covenantcode.crm.entity.Student;
 import com.covenantcode.crm.entity.LeadComment;
+import com.covenantcode.crm.entity.Student;
+import com.covenantcode.crm.entity.User;
 import com.covenantcode.crm.entity.enums.LeadStatus;
 import com.covenantcode.crm.exception.BadRequestException;
 import com.covenantcode.crm.exception.ConflictException;
@@ -22,12 +22,12 @@ import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.LeadCommentMapper;
 import com.covenantcode.crm.mapper.LeadMapper;
 import com.covenantcode.crm.mapper.StudentMapper;
-import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.repository.CourseRepository;
-import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.LeadCommentRepository;
 import com.covenantcode.crm.repository.LeadRepository;
-
+import com.covenantcode.crm.repository.StudentRepository;
+import com.covenantcode.crm.repository.UserRepository;
+import com.covenantcode.crm.service.TelegramNotificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,28 +45,25 @@ import org.springframework.data.jpa.domain.Specification;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
-
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
-import static org.mockito.ArgumentMatchers.anyLong;  // Корректно для всех современных версий Mockito (3.x+)
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 
 
 
@@ -96,6 +93,9 @@ class LeadServiceImplTest {
 
     @Mock
     private LeadCommentMapper leadCommentMapper;
+
+    @Mock
+    private TelegramNotificationService telegramNotificationService;
 
     @InjectMocks
     private LeadServiceImpl leadService;
@@ -235,6 +235,7 @@ class LeadServiceImplTest {
         verify(userRepository).findById(2L);
         verify(leadRepository).save(any(Lead.class));
         verify(leadMapper).toResponse(any(Lead.class));
+        verify(telegramNotificationService).notifyLeadCreated(savedLead);
 
         ArgumentCaptor<Lead> leadCaptor = ArgumentCaptor.forClass(Lead.class);
         verify(leadRepository).save(leadCaptor.capture());
@@ -276,6 +277,7 @@ class LeadServiceImplTest {
         verify(courseRepository, never()).findById(any());
         verify(userRepository, never()).findById(any());
         verify(leadRepository).save(any(Lead.class));
+        verify(telegramNotificationService).notifyLeadCreated(minimalSavedLead);
 
         ArgumentCaptor<Lead> leadCaptor = ArgumentCaptor.forClass(Lead.class);
         verify(leadRepository).save(leadCaptor.capture());
@@ -742,6 +744,7 @@ class LeadServiceImplTest {
         expectedResponse.setFirstName("Иван");
 
         when(leadRepository.findById(leadId)).thenReturn(Optional.of(lead));
+        when(leadRepository.save(any(Lead.class))).thenReturn(lead);
         when(studentRepository.save(any(Student.class))).thenAnswer(invocation -> {
             Student s = invocation.getArgument(0);
             s.setId(10L);
@@ -764,6 +767,9 @@ class LeadServiceImplTest {
         verify(studentRepository, times(1)).save(any(Student.class));
 
         verify(leadRepository, times(1)).save(lead);
+
+        verify(telegramNotificationService, times(1))
+                .notifyLeadConverted(lead, lead.getConvertedStudent());
     }
 
     @Test
@@ -923,6 +929,8 @@ class LeadServiceImplTest {
         verify(leadRepository, times(1)).findById(leadId);
         verify(leadRepository, times(1)).save(any(Lead.class));
         verify(leadMapper, times(1)).toResponse(updatedLead);
+        verify(telegramNotificationService, times(1))
+                .notifyLeadStatusChanged(updatedLead, LeadStatus.NEW);
         verifyNoMoreInteractions(leadRepository, leadMapper);
     }
 
@@ -1067,7 +1075,7 @@ class LeadServiceImplTest {
     }
 
 
-   @Test
+    @Test
     @DisplayName("Проверяет, что findByLeadIdOrderByCreatedAtAsc вызывается ровно один раз при успешном сценарии")
     void getComments_shouldCallFindByLeadIdOnce_whenLeadExists() {
         // Arrange
@@ -1099,4 +1107,3 @@ class LeadServiceImplTest {
         verify(leadCommentRepository, never()).findByLeadIdOrderByCreatedAtAsc(leadId);
     }
 }
-

@@ -68,4 +68,20 @@ public class UserServiceImpl implements UserService {
         User savedUser = userRepository.save(user);
         return userMapper.toResponse(savedUser);
     }
+
+    @Override
+    @Transactional
+    public UserResponse updateTelegramChatId(Long userId, String chatId, User currentUser){
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Пользователь с id " + userId + " не найден"));
+
+        boolean isAdmin = currentUser.getRole().getName() == RoleName.ADMIN;
+        if (!isAdmin && !currentUser.getId().equals(userId)) {
+            throw new ForbiddenException("Вы можете обновлять Telegram Chat ID только для своего аккаунта");
+        }
+
+        user.setTelegramChatId(chatId);
+        User savedUser = userRepository.save(user);
+        return userMapper.toResponse(savedUser);
+    }
 }

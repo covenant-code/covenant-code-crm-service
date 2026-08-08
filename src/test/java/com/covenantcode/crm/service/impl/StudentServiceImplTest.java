@@ -15,6 +15,7 @@ import com.covenantcode.crm.mapper.StudentMapper;
 import com.covenantcode.crm.repository.StudentRepository;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
+import com.covenantcode.crm.service.TelegramNotificationService;
 import com.covenantcode.crm.utils.CurrentUserProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +34,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -40,16 +42,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.eq;
-
-import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
+import static org.mockito.Mockito.when;
 
 
 @ExtendWith(MockitoExtension.class)
@@ -69,6 +68,9 @@ class StudentServiceImplTest {
 
     @Mock
     private CurrentUserProvider currentUserProvider;
+
+    @Mock
+    private TelegramNotificationService telegramNotificationService;
 
     @InjectMocks
     private StudentServiceImpl studentService;
@@ -188,6 +190,7 @@ class StudentServiceImplTest {
 
         verify(userRepository, never()).findById(any());
         verify(studentRepository).saveAndFlush(any(Student.class));
+        verify(telegramNotificationService).notifyStudentCreated(savedStudent);
     }
 
     @Test
@@ -218,6 +221,7 @@ class StudentServiceImplTest {
         assertEquals(userId, actualResponse.getUserId());
         verify(userRepository).findById(userId);
         verify(studentRepository).existsByUser_Id(userId);
+        verify(telegramNotificationService).notifyStudentCreated(savedStudent);
     }
 
     @Test

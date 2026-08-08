@@ -16,12 +16,12 @@ import com.covenantcode.crm.repository.StudentSpecifications;
 import com.covenantcode.crm.repository.StudyGroupRepository;
 import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.service.StudentService;
+import com.covenantcode.crm.service.TelegramNotificationService;
 import com.covenantcode.crm.utils.CurrentUserProvider;
 import lombok.AllArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +35,7 @@ public class StudentServiceImpl implements StudentService {
     private final StudyGroupRepository studyGroupRepository;
     private final UserRepository userRepository;
     private final CurrentUserProvider currentUserProvider;
+    private final TelegramNotificationService telegramNotificationService;
 
 
     @Transactional(readOnly = true)
@@ -106,6 +107,8 @@ public class StudentServiceImpl implements StudentService {
                 .build();
 
         Student savedStudent = studentRepository.saveAndFlush(student);
+
+        telegramNotificationService.notifyStudentCreated(savedStudent);
 
         return studentMapper.toResponse(savedStudent);
     }

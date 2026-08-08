@@ -1,12 +1,12 @@
 package com.covenantcode.crm.service.impl;
 
-import com.covenantcode.crm.dto.lead.LeadResponse;
 import com.covenantcode.crm.dto.lead.LeadCommentCreateRequest;
-import com.covenantcode.crm.dto.lead.LeadUpdateRequest;
+import com.covenantcode.crm.dto.lead.LeadCommentResponse;
 import com.covenantcode.crm.dto.lead.LeadConvertRequest;
 import com.covenantcode.crm.dto.lead.LeadCreateRequest;
+import com.covenantcode.crm.dto.lead.LeadResponse;
 import com.covenantcode.crm.dto.lead.LeadStatusUpdateRequest;
-import com.covenantcode.crm.dto.lead.LeadCommentResponse;
+import com.covenantcode.crm.dto.lead.LeadUpdateRequest;
 import com.covenantcode.crm.dto.student.StudentResponse;
 import com.covenantcode.crm.entity.Course;
 import com.covenantcode.crm.entity.Lead;
@@ -20,14 +20,14 @@ import com.covenantcode.crm.exception.ResourceNotFoundException;
 import com.covenantcode.crm.mapper.LeadCommentMapper;
 import com.covenantcode.crm.mapper.LeadMapper;
 import com.covenantcode.crm.mapper.StudentMapper;
-import com.covenantcode.crm.repository.LeadRepository;
-import com.covenantcode.crm.repository.LeadCommentRepository;
-import com.covenantcode.crm.repository.UserRepository;
-import com.covenantcode.crm.repository.StudentRepository;
-import com.covenantcode.crm.repository.LeadSpecifications;
 import com.covenantcode.crm.repository.CourseRepository;
-
+import com.covenantcode.crm.repository.LeadCommentRepository;
+import com.covenantcode.crm.repository.LeadRepository;
+import com.covenantcode.crm.repository.LeadSpecifications;
+import com.covenantcode.crm.repository.StudentRepository;
+import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.service.LeadService;
+import com.covenantcode.crm.service.TelegramNotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -49,6 +49,7 @@ public class LeadServiceImpl implements LeadService {
     private final LeadMapper leadMapper;
     private final LeadCommentRepository leadCommentRepository;
     private final LeadCommentMapper leadCommentMapper;
+    private final TelegramNotificationService telegramNotificationService;
 
     private final StudentRepository studentRepository;
     private final StudentMapper studentMapper;
@@ -78,6 +79,7 @@ public class LeadServiceImpl implements LeadService {
         lead.setStatus(LeadStatus.NEW);
 
         Lead saved = leadRepository.save(lead);
+        telegramNotificationService.notifyLeadCreated(saved);
         return leadMapper.toResponse(saved);
     }
 
@@ -142,8 +144,9 @@ public class LeadServiceImpl implements LeadService {
 
         lead.setStatus(LeadStatus.CONVERTED_TO_STUDENT);
         lead.setConvertedStudent(savedStudent);
-        leadRepository.save(lead);
+        Lead saveLead = leadRepository.save(lead);
 
+        telegramNotificationService.notifyLeadConverted(saveLead, savedStudent);
         return studentMapper.toResponse(savedStudent);
     }
 
@@ -204,6 +207,7 @@ public class LeadServiceImpl implements LeadService {
     }
 
     @Override
+    @Transactional
     public LeadResponse updateStatus(Long id, LeadStatusUpdateRequest request) {
         Lead lead = leadRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead с id " + id + " не найден"));
@@ -214,8 +218,10 @@ public class LeadServiceImpl implements LeadService {
             );
         }
 
+        LeadStatus oldStatus = lead.getStatus();
         lead.setStatus(request.getStatus());
         Lead updatedLead = leadRepository.save(lead);
+        telegramNotificationService.notifyLeadStatusChanged(updatedLead, oldStatus);
         return leadMapper.toResponse(updatedLead);
     }
 

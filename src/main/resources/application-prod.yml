@@ -36,3 +36,8 @@ logging:
     com.covenantcode.crm: INFO
     org.springframework.security: WARN
     org.flywaydb: INFO
+
+telegram:
+  bot-token: ${TELEGRAM_BOT_TOKEN:}          # токен от @BotFather
+  default-chat-id: ${TELEGRAM_DEFAULT_CHAT_ID:}  # ID общего чата команды (необязательно)
+  enabled: ${TELEGRAM_ENABLED:false}         # false по умолчанию, чтобы не ломать dev-среду

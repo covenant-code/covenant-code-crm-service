@@ -37,4 +37,7 @@ public class UserResponse {
 
     @Schema(description = "Дата создания", example = "2025-01-15T10:00:00Z")
     private String createdAt;
+
+    @Schema(description = "Telegram Chat ID", example = "123456789")
+    private String  telegramChatId;
 }
