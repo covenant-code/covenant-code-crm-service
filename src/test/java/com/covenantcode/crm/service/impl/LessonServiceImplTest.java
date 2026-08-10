@@ -25,10 +25,12 @@ import com.covenantcode.crm.service.LessonOverlapService;
 import com.covenantcode.crm.utils.CurrentUserProvider;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Optional;
+import java.util.Collections;
+
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -47,7 +49,10 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
-
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
@@ -56,9 +61,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
+
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -102,7 +105,6 @@ class LessonServiceImplTest {
     @InjectMocks
     private LessonServiceImpl lessonService;
 
-    // Вспомогательные переменные для тестов
     private final Long lessonId = 1L;
     private final Long teacherId = 10L;
     private final Long groupId = 100L;
@@ -146,7 +148,7 @@ class LessonServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        // Подготовка сущностей с использованием ваших констант
+
         activeGroup = new StudyGroup();
         activeGroup.setId(groupId);
         activeGroup.setStatus(GroupStatus.ACTIVE);
@@ -233,7 +235,7 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 1: без фильтров — возвращает все занятия постранично")
     void getAll_WithoutFilters_ReturnsAllLessons() {
-        // Given
+
         Pageable pageable = PageRequest.of(0, 10);
         Lesson lesson1 = new Lesson();
         Lesson lesson2 = new Lesson();
@@ -243,21 +245,16 @@ class LessonServiceImplTest {
         LessonResponse response1 = LessonResponse.builder().build();
         LessonResponse response2 = LessonResponse.builder().build();
 
-        // Имитируем запрос от ADMIN / MANAGER, чтобы не срабатывала принудительная фильтрация преподавателя
         when(currentUserProvider.isTeacher()).thenReturn(false);
 
-        // lessonRepository.findAll(any(Specification.class), any(Pageable.class)) → Page из двух занятий
         when(lessonRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(lessonPage);
         when(lessonMapper.toResponse(lesson1)).thenReturn(response1);
         when(lessonMapper.toResponse(lesson2)).thenReturn(response2);
 
-        // When
         Page<LessonResponse> result = lessonService.getAll(null, null, null, null, pageable);
 
-        // Then
         assertThat(result).isNotNull();
-        // Проверить: метод вернул Page с двумя элементами
         assertThat(result.getContent()).hasSize(2);
         assertThat(result.getContent()).containsExactly(response1, response2);
 
@@ -277,18 +274,15 @@ class LessonServiceImplTest {
         when(lessonRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(emptyPage);
 
-        // When
         lessonService.getAll(groupId, teacherId, null, null, pageable);
 
-        // Then
-        // Убедиться, что findAll(spec, pageable) вызван один раз с ненулевой спецификацией
         verify(lessonRepository, times(1)).findAll(any(Specification.class), any(Pageable.class));
     }
 
     @Test
     @DisplayName("Тест 3: успешное обновление занятия")
     void update_Success() {
-        // Given
+
         LessonUpdateRequest request = createValidRequest();
 
         LessonResponse expectedResponse = LessonResponse.builder()
@@ -301,7 +295,6 @@ class LessonServiceImplTest {
                         .build())
                 .build();
 
-        // Подставляем значения из request, чтобы верификация совпала до миллисекунды
         LocalDate reqDate = request.getLessonDate();
         LocalTime reqStart = request.getStartTime();
         LocalTime reqEnd = request.getEndTime();
@@ -312,13 +305,10 @@ class LessonServiceImplTest {
 
         when(lessonRepository.save(any(Lesson.class))).thenReturn(existingLesson);
 
-        // ИСПРАВЛЕНО: используем any(Lesson.class), так как объект existingLesson мутирует внутри сервиса
         when(lessonMapper.toResponse(any(Lesson.class))).thenReturn(expectedResponse);
 
-        // When
         LessonResponse actualResponse = lessonService.update(lessonId, request);
 
-        // Then
         assertNotNull(actualResponse);
         assertEquals(expectedResponse, actualResponse);
 
@@ -344,7 +334,6 @@ class LessonServiceImplTest {
         when(studyGroupRepository.findById(groupId))
                 .thenReturn(Optional.of(completedGroup));
 
-        // When & Then
         BadRequestException exception = assertThrows(
                 BadRequestException.class,
                 () -> lessonService.update(lessonId, request)
@@ -392,7 +381,7 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 6: обновление без конфликта с самим собой")
     void update_NoConflictWithItself() {
-        // Given
+
         LessonUpdateRequest request = createValidRequest();
 
         LocalDate reqDate = request.getLessonDate();
@@ -411,12 +400,10 @@ class LessonServiceImplTest {
 
         when(lessonRepository.save(any(Lesson.class))).thenReturn(existingLesson);
 
-        // ИСПРАВЛЕНО: any(Lesson.class) для стабильности при мутациях
         when(lessonMapper.toResponse(any(Lesson.class))).thenReturn(mockResponse);
 
         doNothing().when(lessonOverlapService).checkTeacherOverlap(teacherId, reqDate, reqStart, reqEnd, lessonId);
 
-        // When & Then
         assertDoesNotThrow(() -> lessonService.update(lessonId, request));
 
         verify(lessonOverlapService).checkTeacherOverlap(teacherId, reqDate, reqStart, reqEnd, lessonId);
@@ -425,7 +412,7 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 7: пересечение с другим занятием — ConflictException")
     void update_TeacherOverlap_ThrowsConflictException() {
-        // Given
+
         LessonUpdateRequest request = createValidRequest();
 
         LocalDate reqDate = request.getLessonDate();
@@ -439,7 +426,6 @@ class LessonServiceImplTest {
         doThrow(new ConflictException("У преподавателя уже есть занятие в это время"))
                 .when(lessonOverlapService).checkTeacherOverlap(teacherId, reqDate, reqStart, reqEnd, lessonId);
 
-        // When & Then
         ConflictException exception = assertThrows(ConflictException.class, () ->
                 lessonService.update(lessonId, request)
         );
@@ -806,7 +792,7 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест getLessonsByTeacher 1: ADMIN запрашивает расписание любого преподавателя — успех")
     void getLessonsByTeacher_WhenAdminRequests_ShouldReturnLessons() {
-        // Given
+
         LocalDate dateFrom = lessonDate;
         LocalDate dateTo = lessonDate.plusDays(7);
 
@@ -822,15 +808,12 @@ class LessonServiceImplTest {
         when(lessonMapper.toResponse(existingLesson)).thenReturn(response1);
         when(lessonMapper.toResponse(lesson2)).thenReturn(response2);
 
-        // Используем реальный безопасный токен для ADMIN (id = 999)
         User adminUser = new User();
         adminUser.setId(999L);
         Authentication authentication = new TestingAuthenticationToken(adminUser, null, "ROLE_ADMIN");
 
-        // When
         List<LessonResponse> result = lessonService.getLessonsByTeacher(teacherId, dateFrom, dateTo, authentication);
 
-        // Then
         assertThat(result).hasSize(2).containsExactly(response1, response2);
         verify(userRepository).findById(teacherId);
         verify(lessonRepository).findAll(any(Specification.class), any(Sort.class));
@@ -838,22 +821,19 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 2: TEACHER запрашивает своё расписание — успех")
     void getLessonsByTeacher_WhenTeacherRequestsOwnSchedule_ShouldReturnLessons() {
-        // Given
+
         LocalDate dateFrom = lessonDate;
         LocalDate dateTo = lessonDate.plusDays(7);
 
         when(userRepository.findById(teacherId)).thenReturn(Optional.of(teacher));
         when(lessonRepository.findAll(any(Specification.class), any(Sort.class))).thenReturn(Collections.emptyList());
 
-        // Создаем токен для TEACHER (id = 10, совпадает с teacherId)
         Authentication authentication = new TestingAuthenticationToken(teacher, null, "ROLE_TEACHER");
 
-        // When
         List<LessonResponse> result = lessonService.getLessonsByTeacher(teacherId, dateFrom, dateTo, authentication);
 
-        // Then
         assertNotNull(result);
-        assertTrue(result.isEmpty()); // Корректный пустой список [] при отсутствии занятий согласно п. 4.3 ТЗ
+        assertTrue(result.isEmpty());
 
         verify(lessonRepository).findAll(any(Specification.class), any(Sort.class));
     }
@@ -861,21 +841,17 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 3: TEACHER запрашивает расписание другого преподавателя — ForbiddenException")
     void getLessonsByTeacher_WhenTeacherRequestsSomeoneElsesSchedule_ShouldThrowForbiddenException() {
-        // Given
+
         Long otherTeacherId = 555L;
         User otherTeacher = new User();
         otherTeacher.setId(otherTeacherId);
 
-        // ИСПРАВЛЕНО: Задаем роль нашему преподавателю (teacher из setUp()),
-        // чтобы currentUser.getRole().getName() не выбросил NullPointerException
         teacher.setRole(teacherRole);
 
         when(userRepository.findById(otherTeacherId)).thenReturn(Optional.of(otherTeacher));
 
-        // Используем TestingAuthenticationToken или Mock, передавая обновленный объект teacher
         Authentication authentication = new TestingAuthenticationToken(teacher, null, "ROLE_TEACHER");
 
-        // When & Then
         ForbiddenException exception = assertThrows(
                 ForbiddenException.class,
                 () -> lessonService.getLessonsByTeacher(otherTeacherId, lessonDate, lessonDate, authentication)
@@ -889,32 +865,28 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 4: преподаватель не найден — ResourceNotFoundException")
     void getLessonsByTeacher_WhenTeacherNotFound_ShouldThrowResourceNotFoundException() {
-        // Arrange
+
         Long nonExistentTeacherId = 99L;
         LocalDate dateFrom = null;
         LocalDate dateTo = null;
         Authentication authentication = Mockito.mock(Authentication.class);
 
-        // Мокаем репозиторий, чтобы он возвращал пустой Optional
         Mockito.when(userRepository.findById(nonExistentTeacherId)).thenReturn(Optional.empty());
 
-        // Act & Assert
         ResourceNotFoundException exception = Assertions.assertThrows(
                 ResourceNotFoundException.class,
                 () -> lessonService.getLessonsByTeacher(nonExistentTeacherId, dateFrom, dateTo, authentication)
         );
 
-        // Проверяем, что сообщение об ошибке строго совпадает с ТЗ
         Assertions.assertEquals("User с id 99 не найден", exception.getMessage());
     }
 
     @Test
     @DisplayName("Тест 1: успешное удаление занятия активной группы")
     void delete_Success_ActiveGroup() {
-        // given
+
         when(lessonRepository.findById(lessonId)).thenReturn(Optional.of(existingLesson));
 
-        // when / then
         assertThatCode(() -> lessonService.delete(lessonId)).doesNotThrowAnyException();
         verify(lessonRepository, times(1)).delete(existingLesson);
     }
@@ -977,7 +949,7 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 1: ADMIN запрашивает расписание студента — успех")
     void getLessonsByStudent_AsAdmin_Success() {
-        // Arrange
+
         Long searchStudentId = 7L;
         Student targetStudent = new Student();
         targetStudent.setId(searchStudentId);
@@ -986,17 +958,14 @@ class LessonServiceImplTest {
         List<Lesson> lessons = List.of(lessonForGetById, new Lesson());
         List<LessonResponse> responses = List.of(lessonResponseForGetById, LessonResponse.builder().build());
 
-        // РЕШЕНИЕ: Настраиваем мок authentication, так как extractUserFromAuthentication берет данные оттуда
         when(authentication.getPrincipal()).thenReturn(adminUser);
 
         when(studentRepository.findById(searchStudentId)).thenReturn(Optional.of(targetStudent));
         when(lessonRepository.findLessonsByStudentIdWithDates(searchStudentId, null, null)).thenReturn(lessons);
         when(lessonMapper.toResponseList(lessons)).thenReturn(responses);
 
-        // Act
         List<LessonResponse> result = lessonService.getLessonsByStudent(searchStudentId, null, null, authentication);
 
-        // Assert
         assertNotNull(result);
         assertEquals(2, result.size());
         verifyNoInteractions(userRepository);
@@ -1005,23 +974,20 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 2: STUDENT запрашивает своё расписание — успех")
     void getLessonsByStudent_AsSelfStudent_Success() {
-        // Arrange
+
         Long searchStudentId = studentEntity.getId();
 
         List<Lesson> lessons = List.of(lessonForGetById);
         List<LessonResponse> responses = List.of(lessonResponseForGetById);
 
-        // Настраиваем principal на самого студента
         when(authentication.getPrincipal()).thenReturn(studentUserEntity);
 
         when(studentRepository.findById(searchStudentId)).thenReturn(Optional.of(studentEntity));
         when(lessonRepository.findLessonsByStudentIdWithDates(searchStudentId, null, null)).thenReturn(lessons);
         when(lessonMapper.toResponseList(lessons)).thenReturn(responses);
 
-        // Act
         List<LessonResponse> result = lessonService.getLessonsByStudent(searchStudentId, null, null, authentication);
 
-        // Assert
         assertNotNull(result);
         assertEquals(1, result.size());
         verifyNoInteractions(userRepository);
@@ -1030,19 +996,17 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 3: STUDENT запрашивает чужое расписание — ForbiddenException")
     void getLessonsByStudent_AsOtherStudent_ThrowsForbiddenException() {
-        // Arrange
+
         Long searchStudentId = studentEntity.getId();
 
         User otherStudentUser = new User();
-        otherStudentUser.setId(20L); // ID отличается от владельца (10L)
+        otherStudentUser.setId(20L);
         otherStudentUser.setEmail("other_student@example.com");
         otherStudentUser.setRole(studentRole);
 
-        // Настраиваем principal на чужого студента
         when(authentication.getPrincipal()).thenReturn(otherStudentUser);
         when(studentRepository.findById(searchStudentId)).thenReturn(Optional.of(studentEntity));
 
-        // Act & Assert
         assertThrows(ForbiddenException.class, () ->
                 lessonService.getLessonsByStudent(searchStudentId, null, null, authentication)
         );
@@ -1053,11 +1017,10 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 4: студент не найден — ResourceNotFoundException")
     void getLessonsByStudent_StudentNotFound_ThrowsResourceNotFoundException() {
-        // Arrange
+
         Long invalidStudentId = 99L;
         when(studentRepository.findById(invalidStudentId)).thenReturn(Optional.empty());
 
-        // Act & Assert
         assertThrows(ResourceNotFoundException.class, () ->
                 lessonService.getLessonsByStudent(invalidStudentId, null, null, authentication)
         );
@@ -1067,7 +1030,7 @@ class LessonServiceImplTest {
     @Test
     @DisplayName("Тест 5: студент в двух группах — возвращаются занятия обеих групп")
     void getLessonsByStudent_MultipleGroups_Success() {
-        // Arrange
+
         Long searchStudentId = studentEntity.getId();
 
         List<Lesson> lessons = List.of(lessonForGetById, new Lesson(), new Lesson());
@@ -1077,19 +1040,230 @@ class LessonServiceImplTest {
                 LessonResponse.builder().build()
         );
 
-        // Настраиваем principal на администратора
         when(authentication.getPrincipal()).thenReturn(adminUser);
 
         when(studentRepository.findById(searchStudentId)).thenReturn(Optional.of(studentEntity));
         when(lessonRepository.findLessonsByStudentIdWithDates(searchStudentId, null, null)).thenReturn(lessons);
         when(lessonMapper.toResponseList(lessons)).thenReturn(responses);
 
-        // Act
         List<LessonResponse> result = lessonService.getLessonsByStudent(searchStudentId, null, null, authentication);
 
-        // Assert
         assertNotNull(result);
         assertEquals(3, result.size());
         verifyNoInteractions(userRepository);
+    }
+
+    @Test
+    @DisplayName("Тест 1: ADMIN получает расписание группы — успех")
+    void adminGetsLessons_ShouldReturnLessonList() {
+
+        Long groupId = 1L;
+
+        User admin = new User();
+        admin.setId(1L);
+        admin.setRole(adminRole);
+        admin.setEmail("admin@example.com");
+
+        StudyGroup group = new StudyGroup();
+        group.setId(groupId);
+        group.setName("Java-группа июнь 2026");
+        group.setStudents(new HashSet<>());
+
+        Lesson lesson1 = new Lesson();
+        lesson1.setId(1L);
+        lesson1.setStudyGroup(group);
+        lesson1.setLessonDate(LocalDate.of(2026, 6, 2));
+        lesson1.setStartTime(LocalTime.of(18, 0));
+
+        Lesson lesson2 = new Lesson();
+        lesson2.setId(2L);
+        lesson2.setStudyGroup(group);
+        lesson2.setLessonDate(LocalDate.of(2026, 6, 5));
+        lesson2.setStartTime(LocalTime.of(18, 0));
+
+        List<Lesson> lessons = List.of(lesson1, lesson2);
+
+        LessonResponse response1 = LessonResponse.builder()
+                .id(1L)
+                .build();
+
+        LessonResponse response2 = LessonResponse.builder()
+                .id(2L)
+                .build();
+
+        when(authentication.getPrincipal()).thenReturn(userDetails);
+        when(userDetails.getUsername()).thenReturn(admin.getEmail());
+        when(userRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(lessonRepository.findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId))
+                .thenReturn(lessons);
+        when(lessonMapper.toResponse(lesson1)).thenReturn(response1);
+        when(lessonMapper.toResponse(lesson2)).thenReturn(response2);
+
+        List<LessonResponse> result = lessonService.getLessonsByGroup(groupId, authentication);
+
+        assertThat(result).hasSize(2);
+        assertThat(result).containsExactly(response1, response2);
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(lessonRepository).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId);
+        verify(lessonMapper, times(2)).toResponse(any(Lesson.class));
+    }
+
+    @Test
+    @DisplayName("Тест 2: TEACHER запрашивает расписание своей группы — успех")
+    void teacherGetsOwnGroupLessons_ShouldReturnLessonList() {
+
+        Long groupId = 1L;
+        Long teacherId = 3L;
+
+        User teacher = new User();
+        teacher.setId(teacherId);
+        teacher.setRole(teacherRole);
+        teacher.setEmail("teacher@example.com");
+
+        StudyGroup group = new StudyGroup();
+        group.setId(groupId);
+        group.setName("Java-группа июнь 2026");
+        group.setTeacher(teacher);
+        group.setStudents(new HashSet<>());
+
+        Lesson lesson = new Lesson();
+        lesson.setId(1L);
+        lesson.setStudyGroup(group);
+
+        List<Lesson> lessons = List.of(lesson);
+
+        LessonResponse response = LessonResponse.builder()
+                .id(1L)
+                .build();
+
+        when(authentication.getPrincipal()).thenReturn(userDetails);
+        when(userDetails.getUsername()).thenReturn(teacher.getEmail());
+        when(userRepository.findByEmail(teacher.getEmail())).thenReturn(Optional.of(teacher));
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(lessonRepository.findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId))
+                .thenReturn(lessons);
+        when(lessonMapper.toResponse(lesson)).thenReturn(response);
+
+        List<LessonResponse> result = lessonService.getLessonsByGroup(groupId, authentication);
+
+        assertThat(result).hasSize(1);
+        assertThat(result).containsExactly(response);
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(lessonRepository).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId);
+    }
+
+    @Test
+    @DisplayName("Тест 3: TEACHER запрашивает расписание чужой группы — ForbiddenException")
+    void teacherGetsOtherGroupLessons_ShouldThrowForbiddenException() {
+
+        Long groupId = 1L;
+
+        User groupTeacher = new User();
+        groupTeacher.setId(3L);
+
+        User currentUser = new User();
+        currentUser.setId(5L);
+        currentUser.setRole(teacherRole);
+        currentUser.setEmail("other_teacher@example.com");
+
+        StudyGroup group = new StudyGroup();
+        group.setId(groupId);
+        group.setTeacher(groupTeacher);
+        group.setStudents(new HashSet<>());
+
+        when(authentication.getPrincipal()).thenReturn(userDetails);
+        when(userDetails.getUsername()).thenReturn(currentUser.getEmail());
+        when(userRepository.findByEmail(currentUser.getEmail())).thenReturn(Optional.of(currentUser));
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> lessonService.getLessonsByGroup(groupId, authentication))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("У вас нет доступа к этой группе");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(lessonRepository, never()).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(anyLong());
+        verify(lessonMapper, never()).toResponse(any(Lesson.class));
+    }
+
+    @Test
+    @DisplayName("Тест 4: группа не найдена — ResourceNotFoundException")
+    void groupNotFound_ShouldThrowResourceNotFoundException() {
+
+        Long groupId = 99L;
+
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> lessonService.getLessonsByGroup(groupId, authentication))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessage("StudyGroup not found with id: 99");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(lessonRepository, never()).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(anyLong());
+        verify(lessonMapper, never()).toResponse(any(Lesson.class));
+        verifyNoInteractions(userRepository);
+    }
+
+    @Test
+    @DisplayName("STUDENT запрашивает расписание своей группы — успех")
+    void studentGetsOwnGroupLessons_ShouldReturnLessonList() {
+
+        Long groupId = 1L;
+        Long userId = 10L;
+
+        Role studentRole = new Role();
+        studentRole.setId(3L);
+        studentRole.setName(RoleName.STUDENT);
+
+        User studentUser = new User();
+        studentUser.setId(userId);
+        studentUser.setRole(studentRole);
+        studentUser.setEmail("student@example.com");
+
+        Student student = new Student();
+        student.setId(1L);
+        student.setUser(studentUser);
+
+        StudyGroup group = new StudyGroup();
+        group.setId(groupId);
+        group.setName("Java-группа");
+        group.setStudents(new HashSet<>(Set.of(student)));
+
+        Lesson lesson = new Lesson();
+        lesson.setId(1L);
+        lesson.setStudyGroup(group);
+        lesson.setTopic("Student's lesson");
+        lesson.setLessonDate(LocalDate.now());
+        lesson.setStartTime(LocalTime.of(10, 0));
+        lesson.setEndTime(LocalTime.of(11, 30));
+
+        List<Lesson> lessons = List.of(lesson);
+        LessonResponse response = LessonResponse.builder()
+                .id(1L)
+                .topic("Student's lesson")
+                .build();
+
+        when(authentication.getPrincipal()).thenReturn(studentUser);
+        when(studyGroupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(studentRepository.findByUser_Id(userId)).thenReturn(Optional.of(student));
+        when(lessonRepository.findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId))
+                .thenReturn(lessons);
+        when(lessonMapper.toResponse(lesson)).thenReturn(response);
+
+        List<LessonResponse> result = lessonService.getLessonsByGroup(groupId, authentication);
+
+        assertThat(result).hasSize(1);
+        assertThat(result).containsExactly(response);
+        assertThat(result.get(0).getTopic()).isEqualTo("Student's lesson");
+
+        verify(studyGroupRepository).findById(groupId);
+        verify(studentRepository).findByUser_Id(userId);
+        verify(lessonRepository).findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId);
+        verify(lessonMapper).toResponse(lesson);
     }
 }

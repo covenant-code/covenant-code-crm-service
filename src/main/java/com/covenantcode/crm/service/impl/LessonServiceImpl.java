@@ -22,10 +22,14 @@ import com.covenantcode.crm.repository.UserRepository;
 import com.covenantcode.crm.service.LessonOverlapService;
 import com.covenantcode.crm.service.LessonService;
 import com.covenantcode.crm.utils.CurrentUserProvider;
+
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.stream.Collectors;
+
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -37,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional
+@Slf4j
 @AllArgsConstructor
 public class LessonServiceImpl implements LessonService {
 
@@ -197,10 +202,8 @@ public class LessonServiceImpl implements LessonService {
         userRepository.findById(teacherId)
                 .orElseThrow(() -> new ResourceNotFoundException("User с id " + teacherId + " не найден"));
 
-        // 1. Безопасно извлекаем текущего пользователя (замечание 1)
         User currentUser = extractUserFromAuthentication(authentication);
 
-        // 2. ИСПРАВЛЕНО: Проверка роли приведена к единому паттерну проекта через RoleName
         boolean isTeacher = currentUser.getRole() != null
                 && currentUser.getRole().getName() == RoleName.TEACHER;
 
@@ -208,7 +211,6 @@ public class LessonServiceImpl implements LessonService {
             throw new ForbiddenException("Доступ к расписанию другого преподавателя запрещен");
         }
 
-        // Оставшаяся часть логики спецификаций и маппинга
         Specification<Lesson> specification = Specification.where(LessonSpecifications.hasTeacherId(teacherId))
                 .and(LessonSpecifications.hasDateFrom(dateFrom))
                 .and(LessonSpecifications.hasDateTo(dateTo));
@@ -279,30 +281,80 @@ public class LessonServiceImpl implements LessonService {
     @Override
     @Transactional(readOnly = true)
     public List<LessonResponse> getLessonsByStudent(Long studentId, LocalDate dateFrom, LocalDate dateTo, Authentication authentication) {
-        // 1. Проверяем существование студента через проектное исключение (исправлено с 500 на 404)
+
         Student student = studentRepository.findById(studentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Student", studentId));
 
-        // 2. Безопасно извлекаем текущего пользователя из аутентификации (без лишнего запроса к БД)
         User currentUser = extractUserFromAuthentication(authentication);
 
-        // 3. Проверяем права доступа, используя доменную модель и Enum (исправлена непоследовательность)
         boolean isStudent = currentUser.getRole().getName() == RoleName.STUDENT;
 
         if (isStudent) {
             Long linkedUserId = student.getUser().getId();
             Long currentUserId = currentUser.getId();
 
-            // Студент может смотреть только свое собственное расписание
             if (!linkedUserId.equals(currentUserId)) {
                 throw new ForbiddenException("You do not have permission to view this schedule");
             }
         }
 
-        // 4. Получаем расписание через строго определенный JPQL подзапрос по ТЗ
         List<Lesson> lessons = lessonRepository.findLessonsByStudentIdWithDates(studentId, dateFrom, dateTo);
 
-        // 5. Маппим результат в Response DTO
         return lessonMapper.toResponseList(lessons);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LessonResponse> getLessonsByGroup(Long groupId, Authentication authentication) {
+
+        StudyGroup group = studyGroupRepository.findById(groupId)
+                .orElseThrow(() -> new ResourceNotFoundException("StudyGroup", groupId));
+
+        User currentUser = extractUserFromAuthentication(authentication);
+
+        if (currentUser == null) {
+            throw new ForbiddenException("Пользователь не найден");
+        }
+
+        Long userId = currentUser.getId();
+        Role userRole = currentUser.getRole();
+
+        if (userRole == null) {
+            throw new ForbiddenException("У пользователя не назначена роль");
+        }
+
+        RoleName roleName = userRole.getName();
+
+        if (roleName == RoleName.ADMIN || roleName == RoleName.MANAGER) {
+
+        } else if (roleName == RoleName.TEACHER) {
+            if (group.getTeacher() == null || !group.getTeacher().getId().equals(userId)) {
+                log.warn("Teacher {} tried to access group {} they don't teach", userId, groupId);
+                throw new ForbiddenException("У вас нет доступа к этой группе");
+            }
+        } else if (roleName == RoleName.STUDENT) {
+
+            Student student = studentRepository.findByUser_Id(userId)
+                    .orElseThrow(() -> {
+                        log.warn("Student not found for user id: {}", userId);
+                        return new ForbiddenException("Студент не найден");
+                    });
+
+            boolean isStudentInGroup = group.getStudents().stream()
+                    .anyMatch(s -> s.getId().equals(student.getId()));
+
+            if (!isStudentInGroup) {
+                log.warn("Student {} tried to access group {} they don't belong to", userId, groupId);
+                throw new ForbiddenException("У вас нет доступа к этой группе");
+            }
+        } else {
+            throw new ForbiddenException("Недостаточно прав для доступа к расписанию группы");
+        }
+
+        List<Lesson> lessons = lessonRepository.findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(groupId);
+
+        return lessons.stream()
+                .map(lessonMapper::toResponse)
+                .collect(Collectors.toList());
     }
 }
