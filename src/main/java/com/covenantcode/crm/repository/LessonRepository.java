@@ -27,4 +27,8 @@ public interface LessonRepository extends JpaRepository<Lesson, Long>, JpaSpecif
     );
 
     List<Lesson> findByStudyGroupIdOrderByLessonDateAscStartTimeAsc(Long groupId);
+
+    long countByLessonDate(LocalDate date);
+
+    long countByLessonDateBetween(LocalDate from, LocalDate to);
 }
