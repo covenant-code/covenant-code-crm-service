@@ -12,4 +12,6 @@ public interface StudyGroupRepository extends JpaRepository<StudyGroup, Long>, J
 
     long countByTeacherId(Long teacherId);
 
+    long countByStatus(GroupStatus status);
+
 }
