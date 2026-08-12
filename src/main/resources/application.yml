@@ -23,3 +23,8 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+
+telegram:
+  bot-token: ${TELEGRAM_BOT_TOKEN:}          # токен от @BotFather
+  default-chat-id: ${TELEGRAM_DEFAULT_CHAT_ID:}  # ID общего чата команды (необязательно)
+  enabled: ${TELEGRAM_ENABLED:false}         # false по умолчанию, чтобы не ломать dev-среду
