@@ -36,3 +36,9 @@ logging:
     com.covenantcode.crm: INFO
     org.springframework.security: WARN
     org.flywaydb: INFO
+
+telegram:
+  lead-bot:
+    token: ${TELEGRAM_LEAD_BOT_TOKEN:}
+    username: ${TELEGRAM_LEAD_BOT_USERNAME:}
+    enabled: ${TELEGRAM_LEAD_BOT_ENABLED:true}
