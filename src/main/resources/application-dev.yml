@@ -1,4 +1,7 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
+
   datasource:
     # DB_HOST переопределяется в docker-compose (postgres), для IntelliJ — localhost
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/crm_dev
